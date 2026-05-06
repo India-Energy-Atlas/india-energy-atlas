@@ -44,15 +44,10 @@ def test_client_falls_back_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.api_key == "iea_env_abc"
 
 
-def test_methods_are_placeholders() -> None:
+def test_discovery_methods_exist() -> None:
     client = AtlasClient(api_key="iea_test")
     for method_name in ("list_datasets", "get_dataset_metadata", "get_dataset"):
-        method = getattr(client, method_name)
-        with pytest.raises(NotImplementedError):
-            if method_name == "get_dataset" or method_name == "get_dataset_metadata":
-                method("sldc_demand")
-            else:
-                method()
+        assert callable(getattr(client, method_name)), method_name
 
 
 def test_error_hierarchy() -> None:
