@@ -5,6 +5,8 @@ to handle anything; catch a specific subclass to react to specific
 failure modes.
 """
 
+from __future__ import annotations
+
 
 class AtlasError(Exception):
     """Base class for all errors raised by the india-energy-atlas SDK."""
@@ -16,6 +18,8 @@ class AtlasAuthError(AtlasError):
 
 class AtlasRateLimitError(AtlasError):
     """Rate limit exceeded. HTTP 429. Honour `Retry-After` header where present."""
+
+    retry_after: float | None = None
 
 
 class AtlasNotFoundError(AtlasError):
