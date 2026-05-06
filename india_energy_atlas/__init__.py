@@ -5,6 +5,7 @@ See https://github.com/India-Energy-Atlas/india-energy-atlas for status and road
 """
 
 from india_energy_atlas._version import __version__
+from india_energy_atlas.async_client import AsyncAtlasClient
 from india_energy_atlas.client import AtlasClient
 from india_energy_atlas.exceptions import (
     AtlasAuthError,
@@ -17,6 +18,7 @@ from india_energy_atlas.exceptions import (
 )
 
 __all__ = [
+    "AsyncAtlasClient",
     "AtlasAuthError",
     "AtlasClient",
     "AtlasError",
