@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/datasets/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/positioning/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/quickstart/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/reference/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/cookbook/carbon-intensity/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/cookbook/iex-duration-curve/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+    <url>
+         <loc>https://india-energy-atlas.github.io/india-energy-atlas/cookbook/renewable-contribution/</loc>
+         <lastmod>2026-05-06</lastmod>
+    </url>
+</urlset>
