@@ -32,3 +32,11 @@ class AtlasServerError(AtlasError):
 
 class AtlasValidationError(AtlasError):
     """Request parameters failed validation. HTTP 400 / 422."""
+
+
+class PreviewWarning(UserWarning):
+    """Emitted on first use of an API marked Preview.
+
+    Preview methods are subject to backwards-incompatible changes
+    until they reach v1 in a tagged release.
+    """
