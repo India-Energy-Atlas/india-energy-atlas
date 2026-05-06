@@ -13,6 +13,7 @@ from india_energy_atlas.exceptions import (
     AtlasRateLimitError,
     AtlasServerError,
     AtlasValidationError,
+    PreviewWarning,
 )
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "AtlasRateLimitError",
     "AtlasServerError",
     "AtlasValidationError",
+    "PreviewWarning",
     "__version__",
 ]
