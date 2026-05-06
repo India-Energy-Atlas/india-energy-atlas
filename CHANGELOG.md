@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Discovery methods** ([IEA-313](https://linear.app/sayon/issue/IEA-313)): `list_datasets()` returns the catalogue as a pandas DataFrame; `get_dataset_metadata(id)` returns schema/units/source/provenance/refresh cadence as a dict; generic `get_dataset(id, start=, end=, columns=, filter_column=, filter_operator=, filter_value=, limit=, tz=)` reaches every documented endpoint with auto-pagination, server-side filtering, and a tz-aware DatetimeIndex defaulting to `Asia/Kolkata`. 8 unit tests via respx; 33/33 total green.
 - **Transport layer** ([IEA-312](https://linear.app/sayon/issue/IEA-312)): internal `_HttpxTransport` wrapping `httpx.Client`. Bearer auth from `api_key`, retry-on-5xx with exponential backoff, `Retry-After` honoured on 429, telemetry User-Agent header (off-switch via `send_telemetry=False` or `IEA_TELEMETRY=0`), cursor-pagination iterator, full status-code → exception mapping. 16 transport unit tests via `respx`.
 - `AtlasClient` is now an HTTP-aware context manager (`with AtlasClient() as c:`). Methods still raise `NotImplementedError` until IEA-313 lands.
 - Repo scaffold: `pyproject.toml` (hatchling), Apache 2.0 LICENSE, NOTICE, CONTRIBUTING, CODE_OF_CONDUCT.
