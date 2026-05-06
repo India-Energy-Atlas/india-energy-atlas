@@ -23,6 +23,7 @@ DemandGranularity = Literal["hourly", "15min", "daily"]
 IexMarket = Literal["dam", "rtm", "gdam", "hp-dam", "scm"]
 FrequencyGranularity = Literal["1sec", "1min"]
 GridRegion = Literal["NR", "WR", "SR", "ER", "NER"]
+RegulatoryBody = Literal["cerc", "derc", "mserc", "jverc", "opserc", "tnerc"]
 
 _PREVIEW_WARNED: set[str] = set()
 
@@ -346,6 +347,50 @@ class AtlasClient:
             params["region"] = region
         rows = list(self._transport.paginate("/grid/frequency", params=params))
         return rows_to_frame(rows, tz=tz)
+
+    # ------------------------------------------------------------------
+    # Regulatory corpus (IEA-316)
+    # ------------------------------------------------------------------
+
+    def search_orders(
+        self,
+        *,
+        body: RegulatoryBody,
+        query: str,
+        issued_after: str | pd.Timestamp | None = None,
+        issued_before: str | pd.Timestamp | None = None,
+        limit: int | None = None,
+    ) -> pd.DataFrame:
+        """Search the structured CERC + 5 SERC regulatory corpus.
+
+        Returns a DataFrame with columns ``order_id``, ``body``,
+        ``issued_at``, ``title``, ``petitioner``, ``respondent``,
+        ``tags``, ``url``. Results auto-paginate.
+        """
+        ensure_one_of("body", body, ("cerc", "derc", "mserc", "jverc", "opserc", "tnerc"))
+        ensure_window(issued_after, issued_before)
+        params: dict[str, Any] = {"body": body, "query": query}
+        if issued_after is not None:
+            params["issued_after"] = _stringify(issued_after)
+        if issued_before is not None:
+            params["issued_before"] = _stringify(issued_before)
+        rows = list(self._transport.paginate("/regulatory/orders", params=params, limit=limit))
+        return rows_to_frame(rows, timestamp_column="issued_at")
+
+    def get_order(self, order_id: str) -> dict[str, Any]:
+        """Fetch one fully structured regulatory order.
+
+        ``order_id`` follows the canonical form
+        ``<body>/<year>/<docket>/<issued-date>``, e.g.
+        ``cerc/2024/178/2024-08-12``. Raises ``AtlasNotFoundError`` for
+        unknown ids.
+        """
+        payload = self._transport.request_json("GET", f"/regulatory/orders/{order_id}")
+        if not isinstance(payload, dict):
+            raise TypeError(
+                f"expected dict from /regulatory/orders/{order_id}, got {type(payload).__name__}"
+            )
+        return payload
 
 
 def _stringify(value: str | pd.Timestamp) -> str:
