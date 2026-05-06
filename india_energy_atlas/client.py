@@ -1,13 +1,13 @@
-"""Placeholder AtlasClient.
+"""Synchronous AtlasClient.
 
-Real implementation lands in IEA-312 (transport layer) and follow-on issues.
-For now, this exists so that `import india_energy_atlas` works and downstream
-projects can pin a version while we build out the methods.
+Constructor wires the transport. Typed methods land in IEA-313+.
 """
 
 from __future__ import annotations
 
 import os
+
+from india_energy_atlas._transport import _HttpxTransport
 
 
 class AtlasClient:
@@ -22,6 +22,10 @@ class AtlasClient:
         Override the API base URL. Defaults to `https://api.energymap.in/v1`.
     timeout:
         Per-request timeout in seconds.
+    send_telemetry:
+        Send anonymous SDK version + Python version + OS in User-Agent.
+        Defaults to True. Disable with `send_telemetry=False` or
+        `IEA_TELEMETRY=0`.
     """
 
     DEFAULT_BASE_URL = "https://api.energymap.in/v1"
@@ -33,10 +37,31 @@ class AtlasClient:
         *,
         base_url: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
+        send_telemetry: bool = True,
     ) -> None:
         self.api_key = api_key or os.environ.get("IEA_API_KEY")
         self.base_url = base_url or self.DEFAULT_BASE_URL
         self.timeout = timeout
+        self._transport = _HttpxTransport(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            timeout=timeout,
+            send_telemetry=send_telemetry,
+        )
+
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self._transport.close()
+
+    def __enter__(self) -> AtlasClient:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    # ------------------------------------------------------------------
+    # Discovery (lands in IEA-313)
+    # ------------------------------------------------------------------
 
     def list_datasets(self) -> object:
         """Return a DataFrame of available datasets. Implemented in IEA-313."""

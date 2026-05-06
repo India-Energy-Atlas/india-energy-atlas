@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Transport layer** ([IEA-312](https://linear.app/sayon/issue/IEA-312)): internal `_HttpxTransport` wrapping `httpx.Client`. Bearer auth from `api_key`, retry-on-5xx with exponential backoff, `Retry-After` honoured on 429, telemetry User-Agent header (off-switch via `send_telemetry=False` or `IEA_TELEMETRY=0`), cursor-pagination iterator, full status-code → exception mapping. 16 transport unit tests via `respx`.
+- `AtlasClient` is now an HTTP-aware context manager (`with AtlasClient() as c:`). Methods still raise `NotImplementedError` until IEA-313 lands.
 - Repo scaffold: `pyproject.toml` (hatchling), Apache 2.0 LICENSE, NOTICE, CONTRIBUTING, CODE_OF_CONDUCT.
 - CI matrix (ubuntu + macOS × py3.10/3.11/3.12/3.13) with `ruff`, `mypy --strict`, and `pytest`.
 - `Makefile` with `install`, `verify`, `test`, `lint`, `typecheck`, `clean` targets — same surface as `ies-ingest`.
