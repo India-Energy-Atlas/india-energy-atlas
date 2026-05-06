@@ -12,9 +12,13 @@ from typing import Any, Literal
 import pandas as pd
 
 from india_energy_atlas._dataframes import DEFAULT_TZ, rows_to_frame
+from india_energy_atlas._states import validate_state
 from india_energy_atlas._transport import _HttpxTransport
+from india_energy_atlas._validators import ensure_one_of, ensure_window
 
 FilterOperator = Literal["=", "!=", ">", ">=", "<", "<=", "in", "not_in"]
+DemandGranularity = Literal["hourly", "15min", "daily"]
+IexMarket = Literal["dam", "rtm", "gdam", "hp-dam", "scm"]
 
 
 class AtlasClient:
@@ -140,6 +144,89 @@ class AtlasClient:
                 limit=limit,
             )
         )
+        return rows_to_frame(rows, tz=tz)
+
+    # ------------------------------------------------------------------
+    # Typed methods (IEA-314)
+    # ------------------------------------------------------------------
+
+    def get_state_demand(
+        self,
+        states: list[str] | str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: DemandGranularity = "hourly",
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """SLDC demand for one or more states.
+
+        Returns a tz-aware DataFrame with columns ``state``, ``demand_mw``,
+        and ``provenance`` (``observed | modeled | synthesized | derived |
+        missing``). Index is the timestamp.
+        """
+        ensure_one_of("granularity", granularity, ("hourly", "15min", "daily"))
+        ensure_window(start, end)
+        if isinstance(states, str):
+            states = [states]
+        validated = [validate_state(s) for s in states]
+
+        params: dict[str, Any] = {
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+            "states": ",".join(validated),
+        }
+        rows = list(self._transport.paginate("/sldc/demand", params=params))
+        return rows_to_frame(rows, tz=tz)
+
+    def get_fuel_mix(
+        self,
+        state: str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Hourly fuel-mix breakdown for one state.
+
+        Columns include per-fuel MW (``coal_mw``, ``gas_mw``, ``hydro_mw``,
+        ``solar_mw``, ``wind_mw``, ``nuclear_mw``, ``other_mw``) plus
+        ``provenance``.
+        """
+        validated = validate_state(state)
+        ensure_window(start, end)
+        params: dict[str, Any] = {
+            "state": validated,
+            "start": _stringify(start),
+            "end": _stringify(end),
+        }
+        rows = list(self._transport.paginate("/sldc/fuel-mix", params=params))
+        return rows_to_frame(rows, tz=tz)
+
+    def get_iex_prices(
+        self,
+        market: IexMarket,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """IEX clearing prices for the given market.
+
+        ``market`` is one of ``dam`` (Day-Ahead), ``rtm`` (Real-Time),
+        ``gdam`` (Green DAM), ``hp-dam`` (High-Price DAM), or ``scm``
+        (Surplus Capacity Market). Returns a 15-min DataFrame with
+        ``mcp_inr_per_mwh``, ``mcv_mw``, ``cleared_mw``, and ``area``.
+        """
+        ensure_one_of("market", market, ("dam", "rtm", "gdam", "hp-dam", "scm"))
+        ensure_window(start, end)
+        params: dict[str, Any] = {
+            "market": market,
+            "start": _stringify(start),
+            "end": _stringify(end),
+        }
+        rows = list(self._transport.paginate("/iex/clearing-prices", params=params))
         return rows_to_frame(rows, tz=tz)
 
 
