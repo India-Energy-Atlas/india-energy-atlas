@@ -1,0 +1,77 @@
+site_name: india-energy-atlas
+site_description: Python client library for the India Energy Atlas data platform.
+site_url: https://india-energy-atlas.github.io/india-energy-atlas/
+repo_url: https://github.com/India-Energy-Atlas/india-energy-atlas
+repo_name: India-Energy-Atlas/india-energy-atlas
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+    - search.highlight
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep orange
+      accent: deep orange
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep orange
+      accent: deep orange
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: false
+            show_root_heading: true
+            heading_level: 2
+            members_order: source
+            docstring_style: numpy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/India-Energy-Atlas
+    - icon: material/web
+      link: https://energymap.in
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Datasets: datasets.md
+  - Cookbook:
+      - Carbon intensity over time: cookbook/carbon-intensity.md
+      - IEX price duration curve: cookbook/iex-duration-curve.md
+      - Demand vs renewable contribution: cookbook/renewable-contribution.md
+  - API reference: reference.md
+  - Positioning: positioning.md
