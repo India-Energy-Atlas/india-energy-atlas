@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-05-07
+
+### Changed — pivot to live API surface ([IEA-321](https://linear.app/sayon/issue/IEA-321))
+
+**What works now (5 live endpoints):**
+
+- `health()` — GET `/api/health` → `{status, database, workspace}` dict.
+- `list_states()` — GET `/api/states` → DataFrame of all states with `state_slug`, `state_name`, `iso_code`, `release_tier`, `build_status`, `completion_class`.
+- `get_state(slug)` — GET `/api/states/{slug}` → per-state detail dict with counts, geometry, downloads.
+- `get_iex_prices(market, start=, end=)` — GET `/api/intelligence/iex-market-data?market_type={DAM|RTM|GDAM|HP-DAM|SCM}`. Returns DataFrame with `mcp_inr_per_mwh` (renamed from `mcp_rs_mwh`), all MW/price columns numeric-coerced from strings. Date filtering is client-side.
+- `get_carbon_intensity(state=, start=, end=)` — GET `/api/intelligence/carbon-intensity?state=`. Returns DataFrame with `gco2_per_kwh` (renamed from `carbon_intensity_gco2_kwh`). Emits `PreviewWarning`. DISCOM addressing raises `NotImplementedError` (IEA-327).
+
+**What is deferred (raises `NotImplementedError` with tracking issue):**
+
+| Method | Lands in |
+|---|---|
+| `get_state_demand` | [IEA-323](https://linear.app/sayon/issue/IEA-323) |
+| `get_fuel_mix` | [IEA-324](https://linear.app/sayon/issue/IEA-324) |
+| `list_datasets`, `get_dataset_metadata`, `get_dataset` | [IEA-325](https://linear.app/sayon/issue/IEA-325) |
+| `get_frequency` | [IEA-326](https://linear.app/sayon/issue/IEA-326) |
+| `get_discom_metrics` | [IEA-327](https://linear.app/sayon/issue/IEA-327) |
+| `search_orders`, `get_order` | [IEA-328](https://linear.app/sayon/issue/IEA-328) |
+
+**Transport / breaking changes:**
+
+- `DEFAULT_BASE_URL` changed from `https://api.energymap.in/v1` to `https://api.energymap.in` (the `/v1` namespace does not exist on the live server).
+- Pagination envelope changed from `{data, next_cursor}` (cursor-based) to `{items, count}` (single-page). The iterator interface is preserved — calling code shape is unchanged.
+- `IexMarket` literals changed to uppercase: `DAM`, `RTM`, `GDAM`, `HP-DAM`, `SCM` (matching the live `market_type` query param).
+- CLI: `iea datasets` now exits non-zero with a message pointing at IEA-325. `iea states` added. `iea health` added. `iea fetch carbon-intensity --state <slug> --out <file>` works.
+
+**Previously in `[Unreleased]`** (all changes from v0.0.1 through this release):
+
+- Docs site (IEA-319), CLI (IEA-318), AsyncAtlasClient (IEA-317), regulatory corpus (IEA-316), typed secondary methods (IEA-315), typed core methods (IEA-314), discovery methods (IEA-313), transport layer (IEA-312).
+
 ### Added
 
 - **Docs site** ([IEA-319](https://linear.app/sayon/issue/IEA-319)): MkDocs Material site at `https://india-energy-atlas.github.io/india-energy-atlas/`. `docs/` content: hero index, quickstart, datasets table, three cookbook recipes (carbon intensity / IEX duration curve / renewable contribution), positioning page, and API reference auto-generated from docstrings via `mkdocstrings`. `.github/workflows/docs.yml` builds with `--strict` and deploys via `mkdocs gh-deploy` on every push to `main`. `mkdocs build --strict` clean locally.
@@ -33,5 +67,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 Initial scaffold. Tracking issue: [IEA-311](https://linear.app/sayon/issue/IEA-311).
 
-[Unreleased]: https://github.com/India-Energy-Atlas/india-energy-atlas/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/India-Energy-Atlas/india-energy-atlas/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/India-Energy-Atlas/india-energy-atlas/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/India-Energy-Atlas/india-energy-atlas/releases/tag/v0.0.1

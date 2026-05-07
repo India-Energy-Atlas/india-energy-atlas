@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "india-energy-atlas"
-version = "0.0.1"
+version = "0.1.0"
 description = "Python client library for the India Energy Atlas (energymap.in) data platform. SLDC demand, fuel-mix, IEX prices, carbon intensity, and CERC/SERC regulatory orders."
 readme = "README.md"
 license = "Apache-2.0"
