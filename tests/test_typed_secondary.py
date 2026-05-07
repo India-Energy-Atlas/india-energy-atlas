@@ -151,9 +151,6 @@ def test_carbon_intensity_client_side_start_filter(client: AtlasClient) -> None:
 @pytest.mark.parametrize(
     "call",
     [
-        pytest.param(lambda c: c.list_datasets(), id="list_datasets"),
-        pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
-        pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
             lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
             id="get_frequency",
@@ -177,9 +174,6 @@ def test_deferred_method_raises_not_implemented(client: AtlasClient, call: Any) 
 @pytest.mark.parametrize(
     "call,ticket",
     [
-        (lambda c: c.list_datasets(), "IEA-325"),
-        (lambda c: c.get_dataset_metadata("x"), "IEA-325"),
-        (lambda c: c.get_dataset("x"), "IEA-325"),
         (lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"), "IEA-326"),
         (
             lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
@@ -356,3 +350,61 @@ def test_fuel_mix_passes_granularity(client: AtlasClient) -> None:
 def test_fuel_mix_unknown_state_raises_before_network(client: AtlasClient) -> None:
     with pytest.raises(ValueError, match="Unknown state slug"):
         client.get_fuel_mix("narnia", start="2025-01-01", end="2025-01-02")
+
+
+# ---------------------------------------------------------------------------
+# list_datasets / get_dataset_metadata / get_dataset — live [IEA-325]
+# ---------------------------------------------------------------------------
+
+_CATALOGUE_ITEMS = [
+    {"dataset_id": "state_demand", "title": "SLDC State Electricity Demand",
+     "endpoint": "/api/intelligence/state-demand", "tier": "free"},
+    {"dataset_id": "fuel_mix", "title": "State Hourly Fuel Mix",
+     "endpoint": "/api/intelligence/fuel-mix", "tier": "free"},
+]
+
+_STATE_DEMAND_META = {
+    "dataset_id": "state_demand",
+    "title": "SLDC State Electricity Demand",
+    "endpoint": "/api/intelligence/state-demand",
+    "tier": "free",
+    "coverage_start": "2022-01-01",
+    "schema": [{"name": "timestamp", "type": "timestamptz"},
+               {"name": "demand_mw", "type": "double"}],
+}
+
+
+@respx.mock
+def test_list_datasets_returns_dataframe(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets").mock(
+        return_value=httpx.Response(200, json={"items": _CATALOGUE_ITEMS, "count": 2})
+    )
+    df = client.list_datasets()
+    assert isinstance(df, pd.DataFrame)
+    assert list(df["dataset_id"]) == ["state_demand", "fuel_mix"]
+
+
+@respx.mock
+def test_get_dataset_metadata_returns_dict(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets/state_demand").mock(
+        return_value=httpx.Response(200, json=_STATE_DEMAND_META)
+    )
+    meta = client.get_dataset_metadata("state_demand")
+    assert isinstance(meta, dict)
+    assert meta["dataset_id"] == "state_demand"
+    assert "schema" in meta
+
+
+@respx.mock
+def test_get_dataset_proxies_to_endpoint(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets/state_demand").mock(
+        return_value=httpx.Response(200, json=_STATE_DEMAND_META)
+    )
+    demand_rows = [{"timestamp": "2025-01-01T05:30:00+05:30", "state": "Delhi",
+                    "demand_mw": 4200.0}]
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=httpx.Response(200, json={"items": demand_rows, "count": 1})
+    )
+    df = client.get_dataset("state_demand", state="delhi", start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
