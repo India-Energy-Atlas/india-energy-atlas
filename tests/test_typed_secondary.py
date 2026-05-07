@@ -155,10 +155,6 @@ def test_carbon_intensity_client_side_start_filter(client: AtlasClient) -> None:
         pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
         pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
-            lambda c: c.get_state_demand(["delhi"], start="2025-01-01", end="2025-01-02"),
-            id="get_state_demand",
-        ),
-        pytest.param(
             lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"),
             id="get_fuel_mix",
         ),
@@ -188,7 +184,6 @@ def test_deferred_method_raises_not_implemented(client: AtlasClient, call: Any) 
         (lambda c: c.list_datasets(), "IEA-325"),
         (lambda c: c.get_dataset_metadata("x"), "IEA-325"),
         (lambda c: c.get_dataset("x"), "IEA-325"),
-        (lambda c: c.get_state_demand(["delhi"], start="2025-01-01", end="2025-01-02"), "IEA-323"),
         (lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"), "IEA-324"),
         (lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"), "IEA-326"),
         (
@@ -203,3 +198,79 @@ def test_deferred_method_names_correct_ticket(client: AtlasClient, call: Any, ti
     with pytest.raises(NotImplementedError) as exc_info:
         call(client)
     assert ticket in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# get_state_demand — live [IEA-323]
+# ---------------------------------------------------------------------------
+
+_DEMAND_ROWS = [
+    {
+        "timestamp": "2025-01-01T05:30:00+05:30",
+        "state": "Delhi",
+        "demand_mw": 4200.5,
+        "source": "metered_sldc",
+        "source_kind": "observed",
+        "confidence": None,
+    },
+    {
+        "timestamp": "2025-01-01T06:30:00+05:30",
+        "state": "Delhi",
+        "demand_mw": 4350.0,
+        "source": "modeled_v2",
+        "source_kind": "modeled",
+        "confidence": 0.85,
+    },
+]
+
+
+@respx.mock
+def test_state_demand_returns_dataframe(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=_items(_DEMAND_ROWS)
+    )
+    df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "demand_mw" in df.columns
+
+
+@respx.mock
+def test_state_demand_renames_source_kind_to_provenance(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=_items(_DEMAND_ROWS)
+    )
+    df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
+    assert "provenance" in df.columns
+    assert "source_kind" not in df.columns
+
+
+@respx.mock
+def test_state_demand_numeric_coercion(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=_items(_DEMAND_ROWS)
+    )
+    df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
+    assert df["demand_mw"].dtype.kind == "f"
+
+
+@respx.mock
+def test_state_demand_passes_params(client: AtlasClient) -> None:
+    route = respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=_items([])
+    )
+    client.get_state_demand(
+        ["delhi", "maharashtra"],
+        start="2025-01-01",
+        end="2025-01-08",
+        granularity="daily",
+    )
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["granularity"] == "daily"
+    assert "delhi" in qs["state"]
+    assert "maharashtra" in qs["state"]
+
+
+def test_state_demand_unknown_state_raises_before_network(client: AtlasClient) -> None:
+    with pytest.raises(ValueError, match="Unknown state slug"):
+        client.get_state_demand("narnia", start="2025-01-01", end="2025-01-02")

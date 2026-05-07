@@ -14,6 +14,7 @@ from india_energy_atlas._dataframes import (
     filter_by_window,
     rows_to_frame,
 )
+from india_energy_atlas._states import validate_state
 from india_energy_atlas._transport import _HttpxTransport
 from india_energy_atlas.exceptions import PreviewWarning
 
@@ -251,12 +252,52 @@ class AtlasClient:
             "Track progress at https://linear.app/sayon/issue/IEA-325"
         )
 
-    def get_state_demand(self, states: list[str] | str, **kwargs: Any) -> pd.DataFrame:
-        """Not yet live. Landing in IEA-323."""
-        raise NotImplementedError(
-            "/api/intelligence/state-demand endpoint lands in IEA-323. "
-            "Track progress at https://linear.app/sayon/issue/IEA-323"
-        )
+    def get_state_demand(
+        self,
+        states: list[str] | str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: Literal["hourly", "daily"] = "hourly",
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Hourly or daily state electricity demand.
+
+        Parameters
+        ----------
+        states:
+            One slug or a list of canonical slugs (e.g. ``"delhi"`` or
+            ``["delhi", "maharashtra"]``). All slugs are validated against
+            ``_states.CANONICAL_STATES`` before the network call.
+        start, end:
+            ISO-8601 date/timestamp bounds (inclusive start, exclusive end).
+        granularity:
+            ``"hourly"`` (default) or ``"daily"`` averages.
+        tz:
+            Timezone to use for the DataFrame index. Defaults to IST.
+
+        Returns a tz-aware DataFrame indexed on ``timestamp``, with columns
+        ``state``, ``demand_mw``, ``source``, ``provenance``, ``confidence``.
+        The API field ``source_kind`` is renamed to ``provenance``.
+        """
+        slug_list: list[str] = [states] if isinstance(states, str) else list(states)
+        for s in slug_list:
+            validate_state(s)
+
+        params: dict[str, Any] = {
+            "state": ",".join(slug_list),
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+        }
+        rows = list(self._transport.paginate("/api/intelligence/state-demand", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["demand_mw", "confidence"])
+        if "source_kind" in df.columns:
+            df = df.rename(columns={"source_kind": "provenance"})
+        return df
 
     def get_fuel_mix(self, state: str, **kwargs: Any) -> pd.DataFrame:
         """Not yet live. Landing in IEA-324."""

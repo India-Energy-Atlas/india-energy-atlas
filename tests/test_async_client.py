@@ -151,10 +151,6 @@ async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) ->
         pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
         pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
-            lambda c: c.get_state_demand(["delhi"], start="2025-01-01", end="2025-01-02"),
-            id="get_state_demand",
-        ),
-        pytest.param(
             lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"),
             id="get_fuel_mix",
         ),
@@ -174,6 +170,34 @@ async def test_async_deferred_raises_not_implemented(client: AsyncAtlasClient, c
     with pytest.raises(NotImplementedError) as exc_info:
         await coro(client)
     assert "IEA-" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# get_state_demand — async [IEA-323]
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_state_demand_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=_items(
+            [
+                {
+                    "timestamp": "2025-01-01T05:30:00+05:30",
+                    "state": "Delhi",
+                    "demand_mw": 4200.5,
+                    "source": "metered_sldc",
+                    "source_kind": "observed",
+                    "confidence": None,
+                }
+            ]
+        )
+    )
+    df = await client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert "demand_mw" in df.columns
+    assert "provenance" in df.columns
+    assert df["demand_mw"].dtype.kind == "f"
 
 
 # ---------------------------------------------------------------------------

@@ -57,6 +57,7 @@ def test_live_methods_exist() -> None:
         "get_state",
         "get_iex_prices",
         "get_carbon_intensity",
+        "get_state_demand",
     ):
         assert callable(getattr(client, method_name)), method_name
 
@@ -67,7 +68,6 @@ def test_deferred_methods_exist() -> None:
         "list_datasets",
         "get_dataset_metadata",
         "get_dataset",
-        "get_state_demand",
         "get_fuel_mix",
         "get_frequency",
         "get_discom_metrics",

@@ -8,7 +8,7 @@ are shared with the sync client.
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -19,9 +19,11 @@ from india_energy_atlas._dataframes import (
     filter_by_window,
     rows_to_frame,
 )
+from india_energy_atlas._states import validate_state
 from india_energy_atlas.client import (
-    _NUMERIC_IEX_COLS,
     IexMarket,
+    _NUMERIC_IEX_COLS,
+    _stringify,
     _warn_preview_once,
 )
 
@@ -180,11 +182,36 @@ class AsyncAtlasClient:
             "Track progress at https://linear.app/sayon/issue/IEA-325"
         )
 
-    async def get_state_demand(self, states: list[str] | str, **kwargs: Any) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/intelligence/state-demand endpoint lands in IEA-323. "
-            "Track progress at https://linear.app/sayon/issue/IEA-323"
-        )
+    async def get_state_demand(
+        self,
+        states: list[str] | str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: Literal["hourly", "daily"] = "hourly",
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Async equivalent of `AtlasClient.get_state_demand`."""
+        slug_list: list[str] = [states] if isinstance(states, str) else list(states)
+        for s in slug_list:
+            validate_state(s)
+
+        params: dict[str, Any] = {
+            "state": ",".join(slug_list),
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+        }
+        rows = [r async for r in self._transport.paginate(
+            "/api/intelligence/state-demand", params=params
+        )]
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["demand_mw", "confidence"])
+        if "source_kind" in df.columns:
+            df = df.rename(columns={"source_kind": "provenance"})
+        return df
 
     async def get_fuel_mix(self, state: str, **kwargs: Any) -> pd.DataFrame:
         raise NotImplementedError(
