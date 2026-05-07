@@ -206,11 +206,21 @@ class AtlasClient:
         _warn_preview_once("get_carbon_intensity", until="2026-10-01")
 
         if discom is not None:
-            raise NotImplementedError(
-                "DISCOM-level carbon intensity is not yet live. "
-                "It lands in IEA-327 (/api/intelligence/discom-metrics). "
-                "Use state= for now."
+            from india_energy_atlas._discoms import validate_discom
+            validate_discom(discom)
+            params: dict[str, Any] = {"discom": discom}
+            rows = list(self._transport.paginate("/api/intelligence/carbon-intensity", params=params))
+            df = rows_to_frame(rows, tz=tz)
+            if df.empty:
+                return df
+            coerce_numeric_columns(
+                df, ["carbon_intensity_gco2_kwh", "total_generation_mw", "confidence"]
             )
+            if "carbon_intensity_gco2_kwh" in df.columns:
+                df = df.rename(columns={"carbon_intensity_gco2_kwh": "gco2_per_kwh"})
+            df = filter_by_window(df, start, end, tz=tz)
+            return df
+
         if state is None:
             raise ValueError("state= must be provided")
 
@@ -381,12 +391,41 @@ class AtlasClient:
         coerce_numeric_columns(df, ["frequency_hz", "deviation_hz"])
         return df
 
-    def get_discom_metrics(self, discom: str, **kwargs: Any) -> pd.DataFrame:
-        """Not yet live. Landing in IEA-327."""
-        raise NotImplementedError(
-            "/api/intelligence/discom-metrics endpoint lands in IEA-327. "
-            "Track progress at https://linear.app/sayon/issue/IEA-327"
-        )
+    def get_discom_metrics(
+        self,
+        discom: str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        metrics: list[str] | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """DISCOM operational scorecard metrics (AT&C losses, billing/collection efficiency, etc.).
+
+        Parameters
+        ----------
+        discom:
+            Canonical DISCOM slug (e.g. ``"bses-rajdhani"``). Validated
+            against ``_discoms.CANONICAL_DISCOMS`` before the network call.
+        start, end:
+            ISO-8601 date bounds.
+        metrics:
+            Optional list of metric codes to return (all if omitted).
+        tz:
+            Timezone for the DataFrame index. Defaults to IST.
+        """
+        from india_energy_atlas._discoms import validate_discom
+        validate_discom(discom)
+
+        params: dict[str, Any] = {
+            "discom": discom,
+            "start": _stringify(start),
+            "end": _stringify(end),
+        }
+        if metrics:
+            params["metrics"] = ",".join(metrics)
+        rows = list(self._transport.paginate("/api/intelligence/discom-metrics", params=params))
+        return rows_to_frame(rows, tz=tz)
 
     def search_orders(self, **kwargs: Any) -> pd.DataFrame:
         """Not yet live. Landing in IEA-328."""

@@ -134,9 +134,12 @@ async def test_carbon_intensity_async(client: AsyncAtlasClient) -> None:
     assert df.iloc[0]["gco2_per_kwh"] == pytest.approx(494.29)
 
 
-async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) -> None:
-    with pytest.raises(NotImplementedError, match="IEA-327"):
-        await client.get_carbon_intensity(discom="bses-rajdhani")
+async def test_carbon_intensity_unknown_discom_raises_async(client: AsyncAtlasClient) -> None:
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match="Unknown DISCOM slug"):
+            await client.get_carbon_intensity(discom="fake-discom-xyz")
 
 
 # ---------------------------------------------------------------------------
@@ -147,10 +150,6 @@ async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) ->
 @pytest.mark.parametrize(
     "coro",
     [
-        pytest.param(
-            lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
-            id="get_discom_metrics",
-        ),
         pytest.param(lambda c: c.search_orders(body="cerc", query="x"), id="search_orders"),
         pytest.param(lambda c: c.get_order("x"), id="get_order"),
     ],
@@ -338,6 +337,49 @@ async def test_frequency_async(client: AsyncAtlasClient) -> None:
     assert isinstance(df, pd.DataFrame)
     assert "frequency_hz" in df.columns
     assert df["frequency_hz"].dtype.kind == "f"
+
+
+# ---------------------------------------------------------------------------
+# get_discom_metrics — async [IEA-327]
+# ---------------------------------------------------------------------------
+
+_DISCOM_ROWS = [
+    {
+        "timestamp": "2024-03-31",
+        "discom_slug": "bses-rajdhani",
+        "atc_losses": 7.2,
+        "source": "annual_report",
+    }
+]
+
+
+@respx.mock
+async def test_discom_metrics_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(
+        return_value=_items(_DISCOM_ROWS)
+    )
+    df = await client.get_discom_metrics("bses-rajdhani", start="2024-01-01", end="2025-01-01")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+
+
+async def test_discom_metrics_unknown_slug_raises_async(client: AsyncAtlasClient) -> None:
+    with pytest.raises(ValueError, match="Unknown DISCOM slug"):
+        await client.get_discom_metrics("fake-discom", start="2024-01-01", end="2025-01-01")
+
+
+@respx.mock
+async def test_carbon_intensity_discom_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/carbon-intensity").mock(
+        return_value=_items([{"timestamp": "2025-01-01T00:00:00+00:00",
+                               "carbon_intensity_gco2_kwh": 494.0}])
+    )
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        df = await client.get_carbon_intensity(discom="bses-rajdhani")
+    assert isinstance(df, pd.DataFrame)
+    assert "gco2_per_kwh" in df.columns
 
 
 async def test_async_context_manager() -> None:
