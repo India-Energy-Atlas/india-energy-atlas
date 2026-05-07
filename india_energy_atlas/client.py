@@ -207,9 +207,12 @@ class AtlasClient:
 
         if discom is not None:
             from india_energy_atlas._discoms import validate_discom
+
             validate_discom(discom)
             params: dict[str, Any] = {"discom": discom}
-            rows = list(self._transport.paginate("/api/intelligence/carbon-intensity", params=params))
+            rows = list(
+                self._transport.paginate("/api/intelligence/carbon-intensity", params=params)
+            )
             df = rows_to_frame(rows, tz=tz)
             if df.empty:
                 return df
@@ -415,6 +418,7 @@ class AtlasClient:
             Timezone for the DataFrame index. Defaults to IST.
         """
         from india_energy_atlas._discoms import validate_discom
+
         validate_discom(discom)
 
         params: dict[str, Any] = {

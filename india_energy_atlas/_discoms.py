@@ -58,7 +58,4 @@ def validate_discom(slug: str) -> None:
     """Raise ValueError if *slug* is not in the canonical DISCOM allowlist."""
     if slug not in CANONICAL_DISCOMS:
         valid = sorted(CANONICAL_DISCOMS.keys())
-        raise ValueError(
-            f"Unknown DISCOM slug {slug!r}. "
-            f"Valid slugs: {valid}"
-        )
+        raise ValueError(f"Unknown DISCOM slug {slug!r}. Valid slugs: {valid}")

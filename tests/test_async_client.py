@@ -136,6 +136,7 @@ async def test_carbon_intensity_async(client: AsyncAtlasClient) -> None:
 
 async def test_carbon_intensity_unknown_discom_raises_async(client: AsyncAtlasClient) -> None:
     import warnings
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(ValueError, match="Unknown DISCOM slug"):
@@ -265,10 +266,18 @@ async def test_parallel_carbon_intensity_fan_out(client: AsyncAtlasClient) -> No
 # ---------------------------------------------------------------------------
 
 _CATALOGUE_ITEMS = [
-    {"dataset_id": "state_demand", "title": "SLDC State Electricity Demand",
-     "endpoint": "/api/intelligence/state-demand", "tier": "free"},
-    {"dataset_id": "fuel_mix", "title": "State Hourly Fuel Mix",
-     "endpoint": "/api/intelligence/fuel-mix", "tier": "free"},
+    {
+        "dataset_id": "state_demand",
+        "title": "SLDC State Electricity Demand",
+        "endpoint": "/api/intelligence/state-demand",
+        "tier": "free",
+    },
+    {
+        "dataset_id": "fuel_mix",
+        "title": "State Hourly Fuel Mix",
+        "endpoint": "/api/intelligence/fuel-mix",
+        "tier": "free",
+    },
 ]
 
 _STATE_DEMAND_META = {
@@ -330,9 +339,7 @@ _FREQUENCY_ROWS = [
 
 @respx.mock
 async def test_frequency_async(client: AsyncAtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/frequency").mock(
-        return_value=_items(_FREQUENCY_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(return_value=_items(_FREQUENCY_ROWS))
     df = await client.get_frequency(start="2025-01-01", end="2025-01-02")
     assert isinstance(df, pd.DataFrame)
     assert "frequency_hz" in df.columns
@@ -355,9 +362,7 @@ _DISCOM_ROWS = [
 
 @respx.mock
 async def test_discom_metrics_async(client: AsyncAtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(
-        return_value=_items(_DISCOM_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(return_value=_items(_DISCOM_ROWS))
     df = await client.get_discom_metrics("bses-rajdhani", start="2024-01-01", end="2025-01-01")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
@@ -371,10 +376,12 @@ async def test_discom_metrics_unknown_slug_raises_async(client: AsyncAtlasClient
 @respx.mock
 async def test_carbon_intensity_discom_async(client: AsyncAtlasClient) -> None:
     respx.get(f"{BASE}/api/intelligence/carbon-intensity").mock(
-        return_value=_items([{"timestamp": "2025-01-01T00:00:00+00:00",
-                               "carbon_intensity_gco2_kwh": 494.0}])
+        return_value=_items(
+            [{"timestamp": "2025-01-01T00:00:00+00:00", "carbon_intensity_gco2_kwh": 494.0}]
+        )
     )
     import warnings
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         df = await client.get_carbon_intensity(discom="bses-rajdhani")

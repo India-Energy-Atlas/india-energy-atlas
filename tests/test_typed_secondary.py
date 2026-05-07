@@ -202,9 +202,7 @@ _DEMAND_ROWS = [
 
 @respx.mock
 def test_state_demand_returns_dataframe(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
-        return_value=_items(_DEMAND_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(return_value=_items(_DEMAND_ROWS))
     df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 2
@@ -213,9 +211,7 @@ def test_state_demand_returns_dataframe(client: AtlasClient) -> None:
 
 @respx.mock
 def test_state_demand_renames_source_kind_to_provenance(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
-        return_value=_items(_DEMAND_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(return_value=_items(_DEMAND_ROWS))
     df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
     assert "provenance" in df.columns
     assert "source_kind" not in df.columns
@@ -223,18 +219,14 @@ def test_state_demand_renames_source_kind_to_provenance(client: AtlasClient) -> 
 
 @respx.mock
 def test_state_demand_numeric_coercion(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
-        return_value=_items(_DEMAND_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(return_value=_items(_DEMAND_ROWS))
     df = client.get_state_demand("delhi", start="2025-01-01", end="2025-01-02")
     assert df["demand_mw"].dtype.kind == "f"
 
 
 @respx.mock
 def test_state_demand_passes_params(client: AtlasClient) -> None:
-    route = respx.get(f"{BASE}/api/intelligence/state-demand").mock(
-        return_value=_items([])
-    )
+    route = respx.get(f"{BASE}/api/intelligence/state-demand").mock(return_value=_items([]))
     client.get_state_demand(
         ["delhi", "maharashtra"],
         start="2025-01-01",
@@ -294,9 +286,7 @@ _FUEL_MIX_ROWS = [
 
 @respx.mock
 def test_fuel_mix_returns_dataframe(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
-        return_value=_items(_FUEL_MIX_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(return_value=_items(_FUEL_MIX_ROWS))
     df = client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-02")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 2
@@ -306,9 +296,7 @@ def test_fuel_mix_returns_dataframe(client: AtlasClient) -> None:
 
 @respx.mock
 def test_fuel_mix_numeric_coercion(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
-        return_value=_items(_FUEL_MIX_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(return_value=_items(_FUEL_MIX_ROWS))
     df = client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-02")
     assert df["thermal_mw"].dtype.kind == "f"
     assert df["total_mw"].dtype.kind == "f"
@@ -316,9 +304,7 @@ def test_fuel_mix_numeric_coercion(client: AtlasClient) -> None:
 
 @respx.mock
 def test_fuel_mix_passes_state_param(client: AtlasClient) -> None:
-    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
-        return_value=_items([])
-    )
+    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(return_value=_items([]))
     client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-08")
     qs = dict(route.calls.last.request.url.params)
     assert qs["state"] == "gujarat"
@@ -326,9 +312,7 @@ def test_fuel_mix_passes_state_param(client: AtlasClient) -> None:
 
 @respx.mock
 def test_fuel_mix_passes_granularity(client: AtlasClient) -> None:
-    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
-        return_value=_items([])
-    )
+    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(return_value=_items([]))
     client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-08", granularity="daily")
     qs = dict(route.calls.last.request.url.params)
     assert qs["granularity"] == "daily"
@@ -344,10 +328,18 @@ def test_fuel_mix_unknown_state_raises_before_network(client: AtlasClient) -> No
 # ---------------------------------------------------------------------------
 
 _CATALOGUE_ITEMS = [
-    {"dataset_id": "state_demand", "title": "SLDC State Electricity Demand",
-     "endpoint": "/api/intelligence/state-demand", "tier": "free"},
-    {"dataset_id": "fuel_mix", "title": "State Hourly Fuel Mix",
-     "endpoint": "/api/intelligence/fuel-mix", "tier": "free"},
+    {
+        "dataset_id": "state_demand",
+        "title": "SLDC State Electricity Demand",
+        "endpoint": "/api/intelligence/state-demand",
+        "tier": "free",
+    },
+    {
+        "dataset_id": "fuel_mix",
+        "title": "State Hourly Fuel Mix",
+        "endpoint": "/api/intelligence/fuel-mix",
+        "tier": "free",
+    },
 ]
 
 _STATE_DEMAND_META = {
@@ -356,8 +348,10 @@ _STATE_DEMAND_META = {
     "endpoint": "/api/intelligence/state-demand",
     "tier": "free",
     "coverage_start": "2022-01-01",
-    "schema": [{"name": "timestamp", "type": "timestamptz"},
-               {"name": "demand_mw", "type": "double"}],
+    "schema": [
+        {"name": "timestamp", "type": "timestamptz"},
+        {"name": "demand_mw", "type": "double"},
+    ],
 }
 
 
@@ -387,8 +381,9 @@ def test_get_dataset_proxies_to_endpoint(client: AtlasClient) -> None:
     respx.get(f"{BASE}/api/datasets/state_demand").mock(
         return_value=httpx.Response(200, json=_STATE_DEMAND_META)
     )
-    demand_rows = [{"timestamp": "2025-01-01T05:30:00+05:30", "state": "Delhi",
-                    "demand_mw": 4200.0}]
+    demand_rows = [
+        {"timestamp": "2025-01-01T05:30:00+05:30", "state": "Delhi", "demand_mw": 4200.0}
+    ]
     respx.get(f"{BASE}/api/intelligence/state-demand").mock(
         return_value=httpx.Response(200, json={"items": demand_rows, "count": 1})
     )
@@ -421,9 +416,7 @@ _FREQUENCY_ROWS = [
 
 @respx.mock
 def test_frequency_returns_dataframe(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/frequency").mock(
-        return_value=_items(_FREQUENCY_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(return_value=_items(_FREQUENCY_ROWS))
     df = client.get_frequency(start="2025-01-01", end="2025-01-02")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 2
@@ -433,9 +426,7 @@ def test_frequency_returns_dataframe(client: AtlasClient) -> None:
 
 @respx.mock
 def test_frequency_numeric_coercion(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/frequency").mock(
-        return_value=_items(_FREQUENCY_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(return_value=_items(_FREQUENCY_ROWS))
     df = client.get_frequency(start="2025-01-01", end="2025-01-02")
     assert df["frequency_hz"].dtype.kind == "f"
     assert df["deviation_hz"].dtype.kind == "f"
@@ -477,9 +468,7 @@ _DISCOM_ROWS = [
 
 @respx.mock
 def test_discom_metrics_returns_dataframe(client: AtlasClient) -> None:
-    respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(
-        return_value=_items(_DISCOM_ROWS)
-    )
+    respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(return_value=_items(_DISCOM_ROWS))
     df = client.get_discom_metrics("bses-rajdhani", start="2024-01-01", end="2025-01-01")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
@@ -494,7 +483,9 @@ def test_discom_metrics_unknown_slug_raises_before_network(client: AtlasClient) 
 def test_discom_metrics_passes_params(client: AtlasClient) -> None:
     route = respx.get(f"{BASE}/api/intelligence/discom-metrics").mock(return_value=_items([]))
     client.get_discom_metrics(
-        "bses-rajdhani", start="2024-01-01", end="2025-01-01",
+        "bses-rajdhani",
+        start="2024-01-01",
+        end="2025-01-01",
         metrics=["atc_losses", "billing_efficiency"],
     )
     qs = dict(route.calls.last.request.url.params)
@@ -505,7 +496,9 @@ def test_discom_metrics_passes_params(client: AtlasClient) -> None:
 @respx.mock
 def test_carbon_intensity_discom_calls_api(client: AtlasClient) -> None:
     respx.get(f"{BASE}/api/intelligence/carbon-intensity").mock(
-        return_value=_items([{"timestamp": "2025-01-01T00:00:00+00:00", "carbon_intensity_gco2_kwh": 494.0}])
+        return_value=_items(
+            [{"timestamp": "2025-01-01T00:00:00+00:00", "carbon_intensity_gco2_kwh": 494.0}]
+        )
     )
     with pytest.warns(PreviewWarning):
         df = client.get_carbon_intensity(discom="bses-rajdhani")

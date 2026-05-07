@@ -135,6 +135,7 @@ class AsyncAtlasClient:
 
         if discom is not None:
             from india_energy_atlas._discoms import validate_discom
+
             validate_discom(discom)
             params: dict[str, Any] = {"discom": discom}
             rows = [
@@ -216,9 +217,10 @@ class AsyncAtlasClient:
             "end": _stringify(end),
             "granularity": granularity,
         }
-        rows = [r async for r in self._transport.paginate(
-            "/api/intelligence/state-demand", params=params
-        )]
+        rows = [
+            r
+            async for r in self._transport.paginate("/api/intelligence/state-demand", params=params)
+        ]
         df = rows_to_frame(rows, tz=tz)
         if df.empty:
             return df
@@ -244,9 +246,9 @@ class AsyncAtlasClient:
             "end": _stringify(end),
             "granularity": granularity,
         }
-        rows = [r async for r in self._transport.paginate(
-            "/api/intelligence/fuel-mix", params=params
-        )]
+        rows = [
+            r async for r in self._transport.paginate("/api/intelligence/fuel-mix", params=params)
+        ]
         df = rows_to_frame(rows, tz=tz)
         if df.empty:
             return df
@@ -271,7 +273,9 @@ class AsyncAtlasClient:
         }
         if region is not None:
             params["region"] = region
-        rows = [r async for r in self._transport.paginate("/api/intelligence/frequency", params=params)]
+        rows = [
+            r async for r in self._transport.paginate("/api/intelligence/frequency", params=params)
+        ]
         df = rows_to_frame(rows, tz=tz)
         if df.empty:
             return df
@@ -289,6 +293,7 @@ class AsyncAtlasClient:
     ) -> pd.DataFrame:
         """Async equivalent of `AtlasClient.get_discom_metrics`."""
         from india_energy_atlas._discoms import validate_discom
+
         validate_discom(discom)
 
         params: dict[str, Any] = {
@@ -298,7 +303,12 @@ class AsyncAtlasClient:
         }
         if metrics:
             params["metrics"] = ",".join(metrics)
-        rows = [r async for r in self._transport.paginate("/api/intelligence/discom-metrics", params=params)]
+        rows = [
+            r
+            async for r in self._transport.paginate(
+                "/api/intelligence/discom-metrics", params=params
+            )
+        ]
         return rows_to_frame(rows, tz=tz)
 
     async def search_orders(self, **kwargs: Any) -> pd.DataFrame:
