@@ -213,11 +213,32 @@ class AsyncAtlasClient:
             df = df.rename(columns={"source_kind": "provenance"})
         return df
 
-    async def get_fuel_mix(self, state: str, **kwargs: Any) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/intelligence/fuel-mix endpoint lands in IEA-324. "
-            "Track progress at https://linear.app/sayon/issue/IEA-324"
-        )
+    async def get_fuel_mix(
+        self,
+        state: str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: Literal["hourly", "daily"] = "hourly",
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Async equivalent of `AtlasClient.get_fuel_mix`."""
+        validate_state(state)
+        params: dict[str, Any] = {
+            "state": state,
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+        }
+        rows = [r async for r in self._transport.paginate(
+            "/api/intelligence/fuel-mix", params=params
+        )]
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        fuel_mw_cols = [c for c in df.columns if c.endswith("_mw")]
+        coerce_numeric_columns(df, fuel_mw_cols)
+        return df
 
     async def get_frequency(self, **kwargs: Any) -> pd.DataFrame:
         raise NotImplementedError(
