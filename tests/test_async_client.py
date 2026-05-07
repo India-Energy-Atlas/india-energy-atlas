@@ -148,10 +148,6 @@ async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) ->
     "coro",
     [
         pytest.param(
-            lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
-            id="get_frequency",
-        ),
-        pytest.param(
             lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
             id="get_discom_metrics",
         ),
@@ -316,6 +312,32 @@ async def test_get_dataset_async(client: AsyncAtlasClient) -> None:
     df = await client.get_dataset("state_demand", state="delhi")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_frequency — async [IEA-326]
+# ---------------------------------------------------------------------------
+
+_FREQUENCY_ROWS = [
+    {
+        "timestamp": "2025-01-01T00:00:00+00:00",
+        "region": "NR",
+        "frequency_hz": 49.985,
+        "deviation_hz": -0.015,
+        "source": "rldc_telemetry",
+    },
+]
+
+
+@respx.mock
+async def test_frequency_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(
+        return_value=_items(_FREQUENCY_ROWS)
+    )
+    df = await client.get_frequency(start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert "frequency_hz" in df.columns
+    assert df["frequency_hz"].dtype.kind == "f"
 
 
 async def test_async_context_manager() -> None:
