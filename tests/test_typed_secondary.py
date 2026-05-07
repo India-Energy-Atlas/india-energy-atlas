@@ -152,10 +152,6 @@ def test_carbon_intensity_client_side_start_filter(client: AtlasClient) -> None:
     "call",
     [
         pytest.param(
-            lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
-            id="get_frequency",
-        ),
-        pytest.param(
             lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
             id="get_discom_metrics",
         ),
@@ -174,7 +170,6 @@ def test_deferred_method_raises_not_implemented(client: AtlasClient, call: Any) 
 @pytest.mark.parametrize(
     "call,ticket",
     [
-        (lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"), "IEA-326"),
         (
             lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
             "IEA-327",
@@ -408,3 +403,63 @@ def test_get_dataset_proxies_to_endpoint(client: AtlasClient) -> None:
     df = client.get_dataset("state_demand", state="delhi", start="2025-01-01", end="2025-01-02")
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 1
+
+
+# ---------------------------------------------------------------------------
+# get_frequency — live [IEA-326]
+# ---------------------------------------------------------------------------
+
+_FREQUENCY_ROWS = [
+    {
+        "timestamp": "2025-01-01T00:00:00+00:00",
+        "region": "NR",
+        "frequency_hz": 49.985,
+        "deviation_hz": -0.015,
+        "source": "rldc_telemetry",
+    },
+    {
+        "timestamp": "2025-01-01T00:01:00+00:00",
+        "region": "NR",
+        "frequency_hz": 50.012,
+        "deviation_hz": 0.012,
+        "source": "rldc_telemetry",
+    },
+]
+
+
+@respx.mock
+def test_frequency_returns_dataframe(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(
+        return_value=_items(_FREQUENCY_ROWS)
+    )
+    df = client.get_frequency(start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "frequency_hz" in df.columns
+    assert "deviation_hz" in df.columns
+
+
+@respx.mock
+def test_frequency_numeric_coercion(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/frequency").mock(
+        return_value=_items(_FREQUENCY_ROWS)
+    )
+    df = client.get_frequency(start="2025-01-01", end="2025-01-02")
+    assert df["frequency_hz"].dtype.kind == "f"
+    assert df["deviation_hz"].dtype.kind == "f"
+
+
+@respx.mock
+def test_frequency_passes_region_param(client: AtlasClient) -> None:
+    route = respx.get(f"{BASE}/api/intelligence/frequency").mock(return_value=_items([]))
+    client.get_frequency(start="2025-01-01", end="2025-01-02", region="NR")
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["region"] == "NR"
+
+
+@respx.mock
+def test_frequency_passes_granularity(client: AtlasClient) -> None:
+    route = respx.get(f"{BASE}/api/intelligence/frequency").mock(return_value=_items([]))
+    client.get_frequency(start="2025-01-01", end="2025-01-02", granularity="1min")
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["granularity"] == "1min"

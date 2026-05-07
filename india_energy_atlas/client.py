@@ -342,12 +342,44 @@ class AtlasClient:
         coerce_numeric_columns(df, fuel_mw_cols)
         return df
 
-    def get_frequency(self, **kwargs: Any) -> pd.DataFrame:
-        """Not yet live. Landing in IEA-326."""
-        raise NotImplementedError(
-            "/api/intelligence/frequency endpoint lands in IEA-326. "
-            "Track progress at https://linear.app/sayon/issue/IEA-326"
-        )
+    def get_frequency(
+        self,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: Literal["1sec", "1min"] = "1min",
+        region: Literal["NR", "WR", "SR", "ER", "NER"] | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Grid frequency observations per region.
+
+        Parameters
+        ----------
+        start, end:
+            ISO-8601 date/timestamp bounds (inclusive start, exclusive end).
+        granularity:
+            ``"1min"`` (default) or ``"1sec"`` (raises if coverage unavailable).
+        region:
+            One of NR/WR/SR/ER/NER. Omit for all regions.
+        tz:
+            Timezone for the DataFrame index. Defaults to IST.
+
+        Returns a tz-aware DataFrame with columns ``region``, ``frequency_hz``,
+        ``deviation_hz``, ``source``.
+        """
+        params: dict[str, Any] = {
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+        }
+        if region is not None:
+            params["region"] = region
+        rows = list(self._transport.paginate("/api/intelligence/frequency", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["frequency_hz", "deviation_hz"])
+        return df
 
     def get_discom_metrics(self, discom: str, **kwargs: Any) -> pd.DataFrame:
         """Not yet live. Landing in IEA-327."""

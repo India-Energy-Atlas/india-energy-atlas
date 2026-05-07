@@ -239,11 +239,29 @@ class AsyncAtlasClient:
         coerce_numeric_columns(df, fuel_mw_cols)
         return df
 
-    async def get_frequency(self, **kwargs: Any) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/intelligence/frequency endpoint lands in IEA-326. "
-            "Track progress at https://linear.app/sayon/issue/IEA-326"
-        )
+    async def get_frequency(
+        self,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        granularity: Literal["1sec", "1min"] = "1min",
+        region: Literal["NR", "WR", "SR", "ER", "NER"] | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Async equivalent of `AtlasClient.get_frequency`."""
+        params: dict[str, Any] = {
+            "start": _stringify(start),
+            "end": _stringify(end),
+            "granularity": granularity,
+        }
+        if region is not None:
+            params["region"] = region
+        rows = [r async for r in self._transport.paginate("/api/intelligence/frequency", params=params)]
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["frequency_hz", "deviation_hz"])
+        return df
 
     async def get_discom_metrics(self, discom: str, **kwargs: Any) -> pd.DataFrame:
         raise NotImplementedError(
