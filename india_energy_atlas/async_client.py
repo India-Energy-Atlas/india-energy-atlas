@@ -134,11 +134,26 @@ class AsyncAtlasClient:
         _warn_preview_once("get_carbon_intensity", until="2026-10-01")
 
         if discom is not None:
-            raise NotImplementedError(
-                "DISCOM-level carbon intensity is not yet live. "
-                "It lands in IEA-327 (/api/intelligence/discom-metrics). "
-                "Use state= for now."
+            from india_energy_atlas._discoms import validate_discom
+            validate_discom(discom)
+            params: dict[str, Any] = {"discom": discom}
+            rows = [
+                r
+                async for r in self._transport.paginate(
+                    "/api/intelligence/carbon-intensity", params=params
+                )
+            ]
+            df = rows_to_frame(rows, tz=tz)
+            if df.empty:
+                return df
+            coerce_numeric_columns(
+                df, ["carbon_intensity_gco2_kwh", "total_generation_mw", "confidence"]
             )
+            if "carbon_intensity_gco2_kwh" in df.columns:
+                df = df.rename(columns={"carbon_intensity_gco2_kwh": "gco2_per_kwh"})
+            df = filter_by_window(df, start, end, tz=tz)
+            return df
+
         if state is None:
             raise ValueError("state= must be provided")
 
@@ -263,11 +278,28 @@ class AsyncAtlasClient:
         coerce_numeric_columns(df, ["frequency_hz", "deviation_hz"])
         return df
 
-    async def get_discom_metrics(self, discom: str, **kwargs: Any) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/intelligence/discom-metrics endpoint lands in IEA-327. "
-            "Track progress at https://linear.app/sayon/issue/IEA-327"
-        )
+    async def get_discom_metrics(
+        self,
+        discom: str,
+        *,
+        start: str | pd.Timestamp,
+        end: str | pd.Timestamp,
+        metrics: list[str] | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Async equivalent of `AtlasClient.get_discom_metrics`."""
+        from india_energy_atlas._discoms import validate_discom
+        validate_discom(discom)
+
+        params: dict[str, Any] = {
+            "discom": discom,
+            "start": _stringify(start),
+            "end": _stringify(end),
+        }
+        if metrics:
+            params["metrics"] = ",".join(metrics)
+        rows = [r async for r in self._transport.paginate("/api/intelligence/discom-metrics", params=params)]
+        return rows_to_frame(rows, tz=tz)
 
     async def search_orders(self, **kwargs: Any) -> pd.DataFrame:
         raise NotImplementedError(

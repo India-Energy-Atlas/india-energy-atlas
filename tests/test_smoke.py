@@ -63,6 +63,7 @@ def test_live_methods_exist() -> None:
         "get_dataset_metadata",
         "get_dataset",
         "get_frequency",
+        "get_discom_metrics",
     ):
         assert callable(getattr(client, method_name)), method_name
 
@@ -70,7 +71,6 @@ def test_live_methods_exist() -> None:
 def test_deferred_methods_exist() -> None:
     client = AtlasClient(api_key="iea_test")
     for method_name in (
-        "get_discom_metrics",
         "search_orders",
         "get_order",
     ):
