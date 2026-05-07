@@ -7,7 +7,7 @@ Wraps a single `httpx.Client`. Handles:
   - `Retry-After` honoured on 429
   - Telemetry User-Agent (opt-out)
   - Status code -> exception mapping
-  - Cursor-pagination iterator
+  - Single-page iterator over `{items, count}` envelope
 
 Public API: `_HttpxTransport.request_json` and `_HttpxTransport.paginate`.
 Everything else is private.
@@ -36,7 +36,6 @@ from india_energy_atlas.exceptions import (
 
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF_BASE = 0.5  # seconds
-DEFAULT_PAGE_SIZE = 1000
 
 
 def _build_user_agent() -> str:
@@ -60,8 +59,7 @@ def _exception_for_status(status: int, body: object) -> AtlasError:
     if status in (400, 422):
         return AtlasValidationError(f"{status} Validation: {body!r}")
     if status == 429:
-        err = AtlasRateLimitError(f"429 Rate limit exceeded: {body!r}")
-        return err
+        return AtlasRateLimitError(f"429 Rate limit exceeded: {body!r}")
     if 500 <= status < 600:
         return AtlasServerError(f"{status} Server error: {body!r}")
     return AtlasError(f"{status}: {body!r}")
@@ -74,7 +72,6 @@ def _parse_retry_after(headers: httpx.Headers) -> float | None:
     try:
         return max(0.0, float(raw))
     except ValueError:
-        # HTTP-date form not supported; surface None and let caller decide.
         return None
 
 
@@ -166,36 +163,18 @@ class _HttpxTransport:
         *,
         params: dict[str, Any] | None = None,
         limit: int | None = None,
-        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> Iterator[dict[str, Any]]:
-        """Yield rows from a cursor-paginated endpoint.
+        """Yield rows from a `{items, count}` endpoint.
 
-        The Atlas API contract: paginated GETs return
-        `{"data": [...], "next_cursor": <string|null>}`. This helper hides
-        the cursor handshake. Stops when `limit` is reached or the cursor
-        is `null`.
+        Live API returns `{items: [...], count: N}` with no cursor.
+        Pagination is client-side via the `limit` cap.
         """
-        emitted = 0
-        cursor: str | None = None
-        base_params: dict[str, Any] = dict(params or {})
-        base_params["page_size"] = page_size
+        payload = self.request_json("GET", path, params=params)
+        if payload is None:
+            return
 
-        while True:
-            page_params = dict(base_params)
-            if cursor is not None:
-                page_params["cursor"] = cursor
-
-            payload = self.request_json("GET", path, params=page_params)
-            if payload is None:
+        rows: list[dict[str, Any]] = payload.get("items", [])
+        for i, row in enumerate(rows):
+            if limit is not None and i >= limit:
                 return
-
-            rows = payload.get("data", [])
-            for row in rows:
-                if limit is not None and emitted >= limit:
-                    return
-                yield row
-                emitted += 1
-
-            cursor = payload.get("next_cursor")
-            if cursor is None:
-                return
+            yield row

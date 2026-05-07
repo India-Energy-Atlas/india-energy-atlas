@@ -9,14 +9,32 @@ pip install india-energy-atlas
 ```python
 from india_energy_atlas import AtlasClient
 
-client = AtlasClient(api_key="iea_live_...")
-df = client.get_state_demand(states=["delhi"], start="2025-01-01", end="2025-01-07")
-print(df.head())
+with AtlasClient() as c:
+    df = c.get_carbon_intensity(state="delhi", start="2025-01-01", end="2025-12-31")
+    print(df[["gco2_per_kwh", "dominant_fuel"]].head())
 ```
 
-This is the **consumer SDK** for the Atlas API at `api.energymap.in`. It is the Python counterpart to the auto-generated TypeScript SDK promised at [`/ies`](https://energymap.in/ies).
+This is the **consumer SDK** for the Atlas API at `api.energymap.in`. Apache 2.0.
 
-> **Status: scaffold only (v0.0.1).** The package installs and imports. Most methods raise `NotImplementedError`. Real method implementations land in follow-on PRs tracked from [IEA-311](https://linear.app/sayon/issue/IEA-311). Watch the [CHANGELOG](CHANGELOG.md) for v0.1.0 — the first real release.
+---
+
+## What's available now vs coming soon
+
+| Method | Status | Lands in |
+|---|---|---|
+| `health()` | **Live** | — |
+| `list_states()` | **Live** | — |
+| `get_state(slug)` | **Live** | — |
+| `get_iex_prices(market, start=, end=)` | **Live** | — |
+| `get_carbon_intensity(state=, start=, end=)` | **Live (Preview)** | — |
+| `get_state_demand` | Coming soon | [IEA-323](https://linear.app/sayon/issue/IEA-323) |
+| `get_fuel_mix` | Coming soon | [IEA-324](https://linear.app/sayon/issue/IEA-324) |
+| `list_datasets`, `get_dataset_metadata`, `get_dataset` | Coming soon | [IEA-325](https://linear.app/sayon/issue/IEA-325) |
+| `get_frequency` | Coming soon | [IEA-326](https://linear.app/sayon/issue/IEA-326) |
+| `get_discom_metrics` | Coming soon | [IEA-327](https://linear.app/sayon/issue/IEA-327) |
+| `search_orders`, `get_order` | Coming soon | [IEA-328](https://linear.app/sayon/issue/IEA-328) |
+
+Deferred methods raise `NotImplementedError` with a message naming the tracking issue.
 
 ---
 

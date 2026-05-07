@@ -16,7 +16,6 @@ import httpx
 from india_energy_atlas._transport import (
     DEFAULT_BACKOFF_BASE,
     DEFAULT_MAX_RETRIES,
-    DEFAULT_PAGE_SIZE,
     _build_user_agent,
     _exception_for_status,
     _parse_retry_after,
@@ -113,29 +112,14 @@ class _AsyncHttpxTransport:
         *,
         params: dict[str, Any] | None = None,
         limit: int | None = None,
-        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> AsyncIterator[dict[str, Any]]:
-        emitted = 0
-        cursor: str | None = None
-        base_params: dict[str, Any] = dict(params or {})
-        base_params["page_size"] = page_size
+        """Yield rows from a `{items, count}` endpoint. Client-side limit cap."""
+        payload = await self.request_json("GET", path, params=params)
+        if payload is None:
+            return
 
-        while True:
-            page_params = dict(base_params)
-            if cursor is not None:
-                page_params["cursor"] = cursor
-
-            payload = await self.request_json("GET", path, params=page_params)
-            if payload is None:
+        rows: list[dict[str, Any]] = payload.get("items", [])
+        for i, row in enumerate(rows):
+            if limit is not None and i >= limit:
                 return
-
-            rows = payload.get("data", [])
-            for row in rows:
-                if limit is not None and emitted >= limit:
-                    return
-                yield row
-                emitted += 1
-
-            cursor = payload.get("next_cursor")
-            if cursor is None:
-                return
+            yield row
