@@ -151,10 +151,6 @@ async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) ->
         pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
         pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
-            lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"),
-            id="get_fuel_mix",
-        ),
-        pytest.param(
             lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
             id="get_frequency",
         ),
@@ -198,6 +194,42 @@ async def test_state_demand_async(client: AsyncAtlasClient) -> None:
     assert "demand_mw" in df.columns
     assert "provenance" in df.columns
     assert df["demand_mw"].dtype.kind == "f"
+
+
+# ---------------------------------------------------------------------------
+# get_fuel_mix — async [IEA-324]
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_fuel_mix_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
+        return_value=_items(
+            [
+                {
+                    "timestamp": "2025-01-01T05:30:00+05:30",
+                    "state": "Gujarat",
+                    "state_slug": "gujarat",
+                    "thermal_mw": 8500.0,
+                    "hydro_mw": 350.0,
+                    "solar_mw": 0.0,
+                    "wind_mw": 600.0,
+                    "gas_mw": 1200.0,
+                    "nuclear_mw": 0.0,
+                    "renewable_mw": 50.0,
+                    "total_mw": 10700.0,
+                    "source": "canonical_store_v3",
+                    "source_kind": "modeled",
+                    "confidence": 0.85,
+                }
+            ]
+        )
+    )
+    df = await client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert "thermal_mw" in df.columns
+    assert "total_mw" in df.columns
+    assert df["thermal_mw"].dtype.kind == "f"
 
 
 # ---------------------------------------------------------------------------

@@ -155,10 +155,6 @@ def test_carbon_intensity_client_side_start_filter(client: AtlasClient) -> None:
         pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
         pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
-            lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"),
-            id="get_fuel_mix",
-        ),
-        pytest.param(
             lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
             id="get_frequency",
         ),
@@ -184,7 +180,6 @@ def test_deferred_method_raises_not_implemented(client: AtlasClient, call: Any) 
         (lambda c: c.list_datasets(), "IEA-325"),
         (lambda c: c.get_dataset_metadata("x"), "IEA-325"),
         (lambda c: c.get_dataset("x"), "IEA-325"),
-        (lambda c: c.get_fuel_mix("delhi", start="2025-01-01", end="2025-01-02"), "IEA-324"),
         (lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"), "IEA-326"),
         (
             lambda c: c.get_discom_metrics("bses-rajdhani", start="2025-01-01", end="2025-01-02"),
@@ -274,3 +269,90 @@ def test_state_demand_passes_params(client: AtlasClient) -> None:
 def test_state_demand_unknown_state_raises_before_network(client: AtlasClient) -> None:
     with pytest.raises(ValueError, match="Unknown state slug"):
         client.get_state_demand("narnia", start="2025-01-01", end="2025-01-02")
+
+
+# ---------------------------------------------------------------------------
+# get_fuel_mix — live [IEA-324]
+# ---------------------------------------------------------------------------
+
+_FUEL_MIX_ROWS = [
+    {
+        "timestamp": "2025-01-01T05:30:00+05:30",
+        "state": "Gujarat",
+        "state_slug": "gujarat",
+        "thermal_mw": 8500.0,
+        "hydro_mw": 350.0,
+        "solar_mw": 0.0,
+        "wind_mw": 600.0,
+        "gas_mw": 1200.0,
+        "nuclear_mw": 0.0,
+        "renewable_mw": 50.0,
+        "total_mw": 10700.0,
+        "source": "canonical_store_v3",
+        "source_kind": "modeled",
+        "confidence": 0.85,
+    },
+    {
+        "timestamp": "2025-01-01T06:30:00+05:30",
+        "state": "Gujarat",
+        "state_slug": "gujarat",
+        "thermal_mw": 8600.0,
+        "hydro_mw": 350.0,
+        "solar_mw": 120.0,
+        "wind_mw": 610.0,
+        "gas_mw": 1200.0,
+        "nuclear_mw": 0.0,
+        "renewable_mw": 50.0,
+        "total_mw": 10930.0,
+        "source": "canonical_store_v3",
+        "source_kind": "modeled",
+        "confidence": 0.85,
+    },
+]
+
+
+@respx.mock
+def test_fuel_mix_returns_dataframe(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
+        return_value=_items(_FUEL_MIX_ROWS)
+    )
+    df = client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-02")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 2
+    assert "thermal_mw" in df.columns
+    assert "total_mw" in df.columns
+
+
+@respx.mock
+def test_fuel_mix_numeric_coercion(client: AtlasClient) -> None:
+    respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
+        return_value=_items(_FUEL_MIX_ROWS)
+    )
+    df = client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-02")
+    assert df["thermal_mw"].dtype.kind == "f"
+    assert df["total_mw"].dtype.kind == "f"
+
+
+@respx.mock
+def test_fuel_mix_passes_state_param(client: AtlasClient) -> None:
+    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
+        return_value=_items([])
+    )
+    client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-08")
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["state"] == "gujarat"
+
+
+@respx.mock
+def test_fuel_mix_passes_granularity(client: AtlasClient) -> None:
+    route = respx.get(f"{BASE}/api/intelligence/fuel-mix").mock(
+        return_value=_items([])
+    )
+    client.get_fuel_mix("gujarat", start="2025-01-01", end="2025-01-08", granularity="daily")
+    qs = dict(route.calls.last.request.url.params)
+    assert qs["granularity"] == "daily"
+
+
+def test_fuel_mix_unknown_state_raises_before_network(client: AtlasClient) -> None:
+    with pytest.raises(ValueError, match="Unknown state slug"):
+        client.get_fuel_mix("narnia", start="2025-01-01", end="2025-01-02")
