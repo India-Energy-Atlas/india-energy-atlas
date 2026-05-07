@@ -165,22 +165,21 @@ class AsyncAtlasClient:
     # ------------------------------------------------------------------
 
     async def list_datasets(self) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Return catalogue of all available datasets as a DataFrame."""
+        resp = await self._transport.request_json("GET", "/api/datasets")
+        rows = resp.get("items", [])
+        return pd.DataFrame(rows)
 
     async def get_dataset_metadata(self, dataset_id: str) -> dict[str, Any]:
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Return full metadata (including schema) for a single dataset."""
+        return await self._transport.request_json("GET", f"/api/datasets/{dataset_id}")
 
     async def get_dataset(self, dataset_id: str, **kwargs: Any) -> pd.DataFrame:
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Fetch a dataset by id, forwarding kwargs as query params."""
+        meta = await self.get_dataset_metadata(dataset_id)
+        endpoint = meta["endpoint"]
+        rows = [r async for r in self._transport.paginate(endpoint, params=kwargs)]
+        return rows_to_frame(rows)
 
     async def get_state_demand(
         self,

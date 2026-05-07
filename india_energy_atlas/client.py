@@ -232,25 +232,25 @@ class AtlasClient:
     # ------------------------------------------------------------------
 
     def list_datasets(self) -> pd.DataFrame:
-        """Not yet live. Landing in IEA-325."""
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Return catalogue of all available datasets as a DataFrame."""
+        resp = self._transport.request_json("GET", "/api/datasets")
+        rows = resp.get("items", [])
+        return pd.DataFrame(rows)
 
     def get_dataset_metadata(self, dataset_id: str) -> dict[str, Any]:
-        """Not yet live. Landing in IEA-325."""
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Return full metadata (including schema) for a single dataset."""
+        return self._transport.request_json("GET", f"/api/datasets/{dataset_id}")
 
     def get_dataset(self, dataset_id: str, **kwargs: Any) -> pd.DataFrame:
-        """Not yet live. Landing in IEA-325."""
-        raise NotImplementedError(
-            "/api/datasets catalogue endpoint lands in IEA-325. "
-            "Track progress at https://linear.app/sayon/issue/IEA-325"
-        )
+        """Fetch a dataset by id, forwarding kwargs as query params.
+
+        Looks up the endpoint from the catalogue then calls it with the
+        provided keyword arguments (e.g. state=, start=, end=).
+        """
+        meta = self.get_dataset_metadata(dataset_id)
+        endpoint = meta["endpoint"]
+        rows = list(self._transport.paginate(endpoint, params=kwargs))
+        return rows_to_frame(rows)
 
     def get_state_demand(
         self,

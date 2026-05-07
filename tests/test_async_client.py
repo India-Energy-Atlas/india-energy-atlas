@@ -147,9 +147,6 @@ async def test_carbon_intensity_discom_raises_async(client: AsyncAtlasClient) ->
 @pytest.mark.parametrize(
     "coro",
     [
-        pytest.param(lambda c: c.list_datasets(), id="list_datasets"),
-        pytest.param(lambda c: c.get_dataset_metadata("x"), id="get_dataset_metadata"),
-        pytest.param(lambda c: c.get_dataset("x"), id="get_dataset"),
         pytest.param(
             lambda c: c.get_frequency(start="2025-01-01", end="2025-01-02"),
             id="get_frequency",
@@ -266,6 +263,59 @@ async def test_parallel_carbon_intensity_fan_out(client: AsyncAtlasClient) -> No
     assert len(results) == len(states)
     for df in results:
         assert isinstance(df, pd.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# list_datasets / get_dataset_metadata / get_dataset — async [IEA-325]
+# ---------------------------------------------------------------------------
+
+_CATALOGUE_ITEMS = [
+    {"dataset_id": "state_demand", "title": "SLDC State Electricity Demand",
+     "endpoint": "/api/intelligence/state-demand", "tier": "free"},
+    {"dataset_id": "fuel_mix", "title": "State Hourly Fuel Mix",
+     "endpoint": "/api/intelligence/fuel-mix", "tier": "free"},
+]
+
+_STATE_DEMAND_META = {
+    "dataset_id": "state_demand",
+    "endpoint": "/api/intelligence/state-demand",
+    "tier": "free",
+    "schema": [{"name": "timestamp", "type": "timestamptz"}],
+}
+
+
+@respx.mock
+async def test_list_datasets_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets").mock(
+        return_value=httpx.Response(200, json={"items": _CATALOGUE_ITEMS, "count": 2})
+    )
+    df = await client.list_datasets()
+    assert isinstance(df, pd.DataFrame)
+    assert "dataset_id" in df.columns
+
+
+@respx.mock
+async def test_get_dataset_metadata_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets/state_demand").mock(
+        return_value=httpx.Response(200, json=_STATE_DEMAND_META)
+    )
+    meta = await client.get_dataset_metadata("state_demand")
+    assert isinstance(meta, dict)
+    assert meta["dataset_id"] == "state_demand"
+
+
+@respx.mock
+async def test_get_dataset_async(client: AsyncAtlasClient) -> None:
+    respx.get(f"{BASE}/api/datasets/state_demand").mock(
+        return_value=httpx.Response(200, json=_STATE_DEMAND_META)
+    )
+    demand_rows = [{"timestamp": "2025-01-01T05:30:00+05:30", "demand_mw": 4200.0}]
+    respx.get(f"{BASE}/api/intelligence/state-demand").mock(
+        return_value=httpx.Response(200, json={"items": demand_rows, "count": 1})
+    )
+    df = await client.get_dataset("state_demand", state="delhi")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
 
 
 async def test_async_context_manager() -> None:
