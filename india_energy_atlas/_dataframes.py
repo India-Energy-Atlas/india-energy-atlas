@@ -42,3 +42,40 @@ def rows_to_frame(
         df.index = ts.dt.tz_convert(tz)
         df.index.name = ts_col
     return df
+
+
+def coerce_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Cast named columns to numeric, coercing non-parseable values to NaN.
+
+    Safe to call even if some columns are absent from the frame.
+    """
+    for col in columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+
+def filter_by_window(
+    df: pd.DataFrame,
+    start: str | pd.Timestamp | None,
+    end: str | pd.Timestamp | None,
+    tz: str = DEFAULT_TZ,
+) -> pd.DataFrame:
+    """Client-side filter a tz-aware indexed DataFrame to [start, end]."""
+    if df.empty or not isinstance(df.index, pd.DatetimeIndex):
+        return df
+    if start is not None:
+        ts_start = (
+            pd.Timestamp(start).tz_localize(tz)
+            if pd.Timestamp(start).tzinfo is None
+            else pd.Timestamp(start).tz_convert(tz)
+        )
+        df = df[df.index >= ts_start]
+    if end is not None:
+        ts_end = (
+            pd.Timestamp(end).tz_localize(tz)
+            if pd.Timestamp(end).tzinfo is None
+            else pd.Timestamp(end).tz_convert(tz)
+        )
+        df = df[df.index <= ts_end]
+    return df

@@ -1,8 +1,4 @@
-"""Synchronous AtlasClient.
-
-Discovery methods (`list_datasets`, `get_dataset_metadata`, `get_dataset`)
-land here in IEA-313. Typed methods land in IEA-314+.
-"""
+"""Synchronous AtlasClient."""
 
 from __future__ import annotations
 
@@ -12,18 +8,25 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from india_energy_atlas._dataframes import DEFAULT_TZ, rows_to_frame
+from india_energy_atlas._dataframes import (
+    DEFAULT_TZ,
+    coerce_numeric_columns,
+    filter_by_window,
+    rows_to_frame,
+)
 from india_energy_atlas._states import validate_state
 from india_energy_atlas._transport import _HttpxTransport
-from india_energy_atlas._validators import ensure_one_of, ensure_window
 from india_energy_atlas.exceptions import PreviewWarning
 
-FilterOperator = Literal["=", "!=", ">", ">=", "<", "<=", "in", "not_in"]
-DemandGranularity = Literal["hourly", "15min", "daily"]
-IexMarket = Literal["dam", "rtm", "gdam", "hp-dam", "scm"]
-FrequencyGranularity = Literal["1sec", "1min"]
-GridRegion = Literal["NR", "WR", "SR", "ER", "NER"]
-RegulatoryBody = Literal["cerc", "derc", "mserc", "jverc", "opserc", "tnerc"]
+IexMarket = Literal["DAM", "RTM", "GDAM", "HP-DAM", "SCM"]
+
+_NUMERIC_IEX_COLS = [
+    "purchase_bid_mw",
+    "sell_bid_mw",
+    "mcv_mw",
+    "mcp_rs_mwh",
+    "mcp_inr_per_mwh",
+]
 
 _PREVIEW_WARNED: set[str] = set()
 
@@ -40,6 +43,12 @@ def _warn_preview_once(method_name: str, until: str) -> None:
     )
 
 
+def _stringify(value: str | pd.Timestamp) -> str:
+    if isinstance(value, pd.Timestamp):
+        return str(value.isoformat())
+    return str(value)
+
+
 class AtlasClient:
     """Synchronous client for the India Energy Atlas data platform.
 
@@ -49,7 +58,7 @@ class AtlasClient:
         Atlas API key. Falls back to `$IEA_API_KEY`. `None` means
         unauthenticated (public datasets only).
     base_url:
-        Override the API base URL. Defaults to `https://api.energymap.in/v1`.
+        Override the API base URL. Defaults to `https://api.energymap.in`.
     timeout:
         Per-request timeout in seconds.
     send_telemetry:
@@ -58,7 +67,7 @@ class AtlasClient:
         `IEA_TELEMETRY=0`.
     """
 
-    DEFAULT_BASE_URL = "https://api.energymap.in/v1"
+    DEFAULT_BASE_URL = "https://api.energymap.in"
     DEFAULT_TIMEOUT = 30.0
 
     def __init__(
@@ -90,84 +99,168 @@ class AtlasClient:
         self.close()
 
     # ------------------------------------------------------------------
-    # Discovery
+    # Health
     # ------------------------------------------------------------------
 
-    def list_datasets(self) -> pd.DataFrame:
-        """List every dataset available on the Atlas API.
-
-        Returns a DataFrame with at least the columns
-        ``dataset_id, title, granularity, coverage_start, coverage_end, tier``.
-        """
-        rows = list(self._transport.paginate("/datasets"))
-        return rows_to_frame(rows, timestamp_column=None)
-
-    def get_dataset_metadata(self, dataset_id: str) -> dict[str, Any]:
-        """Return schema, units, source, provenance, and refresh cadence for one dataset."""
-        payload = self._transport.request_json("GET", f"/datasets/{dataset_id}")
+    def health(self) -> dict[str, Any]:
+        """Check API health. Returns status, database, and workspace info."""
+        payload = self._transport.request_json("GET", "/api/health")
         if not isinstance(payload, dict):
-            raise TypeError(
-                f"expected dict from /datasets/{dataset_id}, got {type(payload).__name__}"
-            )
+            raise TypeError(f"expected dict from /api/health, got {type(payload).__name__}")
         return payload
 
-    def get_dataset(
-        self,
-        dataset_id: str,
-        *,
-        start: str | pd.Timestamp | None = None,
-        end: str | pd.Timestamp | None = None,
-        columns: list[str] | None = None,
-        filter_column: str | None = None,
-        filter_operator: FilterOperator | None = None,
-        filter_value: object = None,
-        limit: int | None = None,
-        tz: str = DEFAULT_TZ,
-    ) -> pd.DataFrame:
-        """Generic dataset fetch with optional filter and time window.
+    # ------------------------------------------------------------------
+    # States catalogue
+    # ------------------------------------------------------------------
 
-        This is the escape-hatch method — every documented Atlas v1
-        endpoint is reachable through it. Typed wrappers (e.g.
-        ``get_state_demand``) build on top of this in IEA-314+.
+    def list_states(self) -> pd.DataFrame:
+        """List all states in the Atlas catalogue.
+
+        Returns a DataFrame with columns including ``state_slug``,
+        ``state_name``, ``iso_code``, ``release_tier``, ``build_status``,
+        ``completion_class``, and ``counts.*``.
+        """
+        rows = list(self._transport.paginate("/api/states"))
+        return rows_to_frame(rows, timestamp_column=None)
+
+    def get_state(self, slug: str) -> dict[str, Any]:
+        """Return full per-state detail: counts, downloads, geometry.
 
         Parameters
         ----------
-        dataset_id: str
-        start, end: optional ISO-8601 dates / timestamps.
-        columns: optional whitelist of columns to request server-side.
-        filter_column / filter_operator / filter_value:
-            Optional server-side filter. All three must be set together.
-        limit: cap total rows returned. ``None`` means "everything".
-        tz: timezone for the returned DataFrame index. Defaults to IST.
+        slug:
+            State slug, e.g. ``"delhi"``, ``"maharashtra"``.
         """
-        params: dict[str, Any] = {}
-        if start is not None:
-            params["start"] = _stringify(start)
-        if end is not None:
-            params["end"] = _stringify(end)
-        if columns:
-            params["columns"] = ",".join(columns)
-        if filter_column or filter_operator or filter_value is not None:
-            if not (filter_column and filter_operator and filter_value is not None):
-                raise ValueError(
-                    "filter_column, filter_operator, and filter_value must all be set together"
-                )
-            params["filter_column"] = filter_column
-            params["filter_operator"] = filter_operator
-            params["filter_value"] = _stringify_filter_value(filter_value)
+        payload = self._transport.request_json("GET", f"/api/states/{slug}")
+        if not isinstance(payload, dict):
+            raise TypeError(f"expected dict from /api/states/{slug}, got {type(payload).__name__}")
+        return payload
 
-        rows = list(
-            self._transport.paginate(
-                f"/datasets/{dataset_id}/rows",
-                params=params,
-                limit=limit,
+    # ------------------------------------------------------------------
+    # IEX market data
+    # ------------------------------------------------------------------
+
+    def get_iex_prices(
+        self,
+        market: IexMarket,
+        *,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """IEX clearing prices for the given market segment.
+
+        Parameters
+        ----------
+        market:
+            One of ``DAM`` (Day-Ahead), ``RTM`` (Real-Time),
+            ``GDAM`` (Green DAM), ``HP-DAM`` (High-Price DAM),
+            ``SCM`` (Surplus Capacity Market).
+        start, end:
+            Optional ISO-8601 dates. Filtering is client-side until the
+            backend exposes these params directly.
+
+        Returns a DataFrame with columns ``timestamp``, ``market_type``,
+        ``region``, ``purchase_bid_mw``, ``sell_bid_mw``, ``mcv_mw``,
+        ``mcp_inr_per_mwh`` (renamed from ``mcp_rs_mwh`` for clarity),
+        and ``source``. All MW and price columns are numeric.
+
+        The rename ``mcp_rs_mwh`` -> ``mcp_inr_per_mwh`` is SDK-side only;
+        the backend field is ``mcp_rs_mwh``.
+        """
+        params: dict[str, Any] = {"market_type": market}
+        rows = list(self._transport.paginate("/api/intelligence/iex-market-data", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, _NUMERIC_IEX_COLS)
+        if "mcp_rs_mwh" in df.columns:
+            df = df.rename(columns={"mcp_rs_mwh": "mcp_inr_per_mwh"})
+        df = filter_by_window(df, start, end, tz=tz)
+        return df
+
+    # ------------------------------------------------------------------
+    # Carbon intensity
+    # ------------------------------------------------------------------
+
+    def get_carbon_intensity(
+        self,
+        *,
+        state: str | None = None,
+        discom: str | None = None,
+        start: str | pd.Timestamp | None = None,
+        end: str | pd.Timestamp | None = None,
+        tz: str = DEFAULT_TZ,
+    ) -> pd.DataFrame:
+        """Hourly carbon intensity for a state.
+
+        Exactly one of ``state`` or ``discom`` must be provided.
+        DISCOM-level addressing is not yet supported live; passing
+        ``discom=`` raises ``NotImplementedError`` (landing in IEA-327).
+
+        Returns a tz-aware DataFrame. The column ``carbon_intensity_gco2_kwh``
+        from the API is renamed to ``gco2_per_kwh`` SDK-side.
+
+        **Preview API.** Emits ``PreviewWarning`` on first call.
+        """
+        _warn_preview_once("get_carbon_intensity", until="2026-10-01")
+
+        if discom is not None:
+            from india_energy_atlas._discoms import validate_discom
+            validate_discom(discom)
+            params: dict[str, Any] = {"discom": discom}
+            rows = list(self._transport.paginate("/api/intelligence/carbon-intensity", params=params))
+            df = rows_to_frame(rows, tz=tz)
+            if df.empty:
+                return df
+            coerce_numeric_columns(
+                df, ["carbon_intensity_gco2_kwh", "total_generation_mw", "confidence"]
             )
+            if "carbon_intensity_gco2_kwh" in df.columns:
+                df = df.rename(columns={"carbon_intensity_gco2_kwh": "gco2_per_kwh"})
+            df = filter_by_window(df, start, end, tz=tz)
+            return df
+
+        if state is None:
+            raise ValueError("state= must be provided")
+
+        params: dict[str, Any] = {"state": state}
+        rows = list(self._transport.paginate("/api/intelligence/carbon-intensity", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(
+            df, ["carbon_intensity_gco2_kwh", "total_generation_mw", "confidence"]
         )
-        return rows_to_frame(rows, tz=tz)
+        if "carbon_intensity_gco2_kwh" in df.columns:
+            df = df.rename(columns={"carbon_intensity_gco2_kwh": "gco2_per_kwh"})
+        df = filter_by_window(df, start, end, tz=tz)
+        return df
 
     # ------------------------------------------------------------------
-    # Typed methods (IEA-314)
+    # Deferred methods — landing in IEA-323 through IEA-328
     # ------------------------------------------------------------------
+
+    def list_datasets(self) -> pd.DataFrame:
+        """Return catalogue of all available datasets as a DataFrame."""
+        resp = self._transport.request_json("GET", "/api/datasets")
+        rows = resp.get("items", [])
+        return pd.DataFrame(rows)
+
+    def get_dataset_metadata(self, dataset_id: str) -> dict[str, Any]:
+        """Return full metadata (including schema) for a single dataset."""
+        return self._transport.request_json("GET", f"/api/datasets/{dataset_id}")
+
+    def get_dataset(self, dataset_id: str, **kwargs: Any) -> pd.DataFrame:
+        """Fetch a dataset by id, forwarding kwargs as query params.
+
+        Looks up the endpoint from the catalogue then calls it with the
+        provided keyword arguments (e.g. state=, start=, end=).
+        """
+        meta = self.get_dataset_metadata(dataset_id)
+        endpoint = meta["endpoint"]
+        rows = list(self._transport.paginate(endpoint, params=kwargs))
+        return rows_to_frame(rows)
 
     def get_state_demand(
         self,
@@ -175,29 +268,46 @@ class AtlasClient:
         *,
         start: str | pd.Timestamp,
         end: str | pd.Timestamp,
-        granularity: DemandGranularity = "hourly",
+        granularity: Literal["hourly", "daily"] = "hourly",
         tz: str = DEFAULT_TZ,
     ) -> pd.DataFrame:
-        """SLDC demand for one or more states.
+        """Hourly or daily state electricity demand.
 
-        Returns a tz-aware DataFrame with columns ``state``, ``demand_mw``,
-        and ``provenance`` (``observed | modeled | synthesized | derived |
-        missing``). Index is the timestamp.
+        Parameters
+        ----------
+        states:
+            One slug or a list of canonical slugs (e.g. ``"delhi"`` or
+            ``["delhi", "maharashtra"]``). All slugs are validated against
+            ``_states.CANONICAL_STATES`` before the network call.
+        start, end:
+            ISO-8601 date/timestamp bounds (inclusive start, exclusive end).
+        granularity:
+            ``"hourly"`` (default) or ``"daily"`` averages.
+        tz:
+            Timezone to use for the DataFrame index. Defaults to IST.
+
+        Returns a tz-aware DataFrame indexed on ``timestamp``, with columns
+        ``state``, ``demand_mw``, ``source``, ``provenance``, ``confidence``.
+        The API field ``source_kind`` is renamed to ``provenance``.
         """
-        ensure_one_of("granularity", granularity, ("hourly", "15min", "daily"))
-        ensure_window(start, end)
-        if isinstance(states, str):
-            states = [states]
-        validated = [validate_state(s) for s in states]
+        slug_list: list[str] = [states] if isinstance(states, str) else list(states)
+        for s in slug_list:
+            validate_state(s)
 
         params: dict[str, Any] = {
+            "state": ",".join(slug_list),
             "start": _stringify(start),
             "end": _stringify(end),
             "granularity": granularity,
-            "states": ",".join(validated),
         }
-        rows = list(self._transport.paginate("/sldc/demand", params=params))
-        return rows_to_frame(rows, tz=tz)
+        rows = list(self._transport.paginate("/api/intelligence/state-demand", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["demand_mw", "confidence"])
+        if "source_kind" in df.columns:
+            df = df.rename(columns={"source_kind": "provenance"})
+        return df
 
     def get_fuel_mix(
         self,
@@ -205,90 +315,81 @@ class AtlasClient:
         *,
         start: str | pd.Timestamp,
         end: str | pd.Timestamp,
+        granularity: Literal["hourly", "daily"] = "hourly",
         tz: str = DEFAULT_TZ,
     ) -> pd.DataFrame:
-        """Hourly fuel-mix breakdown for one state.
+        """Hourly or daily fuel-mix breakdown for one state.
 
-        Columns include per-fuel MW (``coal_mw``, ``gas_mw``, ``hydro_mw``,
-        ``solar_mw``, ``wind_mw``, ``nuclear_mw``, ``other_mw``) plus
-        ``provenance``.
+        Parameters
+        ----------
+        state:
+            Canonical state slug (e.g. ``"gujarat"``, ``"delhi"``). Validated
+            offline against ``_states.CANONICAL_STATES`` before the network call.
+        start, end:
+            ISO-8601 date/timestamp bounds (inclusive start, exclusive end).
+        granularity:
+            ``"hourly"`` (default) or ``"daily"``.
+        tz:
+            Timezone for the returned DataFrame index. Defaults to IST.
+
+        Returns a tz-aware DataFrame indexed on ``timestamp``, with one column
+        per fuel type (e.g. ``thermal_mw``, ``solar_mw``, ``wind_mw``) plus
+        ``total_mw``, ``state``, ``state_slug``, ``source_kind``, and
+        ``confidence``.
         """
-        validated = validate_state(state)
-        ensure_window(start, end)
+        validate_state(state)
         params: dict[str, Any] = {
-            "state": validated,
+            "state": state,
             "start": _stringify(start),
             "end": _stringify(end),
+            "granularity": granularity,
         }
-        rows = list(self._transport.paginate("/sldc/fuel-mix", params=params))
-        return rows_to_frame(rows, tz=tz)
+        rows = list(self._transport.paginate("/api/intelligence/fuel-mix", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        fuel_mw_cols = [c for c in df.columns if c.endswith("_mw")]
+        coerce_numeric_columns(df, fuel_mw_cols)
+        return df
 
-    def get_iex_prices(
+    def get_frequency(
         self,
-        market: IexMarket,
         *,
         start: str | pd.Timestamp,
         end: str | pd.Timestamp,
+        granularity: Literal["1sec", "1min"] = "1min",
+        region: Literal["NR", "WR", "SR", "ER", "NER"] | None = None,
         tz: str = DEFAULT_TZ,
     ) -> pd.DataFrame:
-        """IEX clearing prices for the given market.
+        """Grid frequency observations per region.
 
-        ``market`` is one of ``dam`` (Day-Ahead), ``rtm`` (Real-Time),
-        ``gdam`` (Green DAM), ``hp-dam`` (High-Price DAM), or ``scm``
-        (Surplus Capacity Market). Returns a 15-min DataFrame with
-        ``mcp_inr_per_mwh``, ``mcv_mw``, ``cleared_mw``, and ``area``.
+        Parameters
+        ----------
+        start, end:
+            ISO-8601 date/timestamp bounds (inclusive start, exclusive end).
+        granularity:
+            ``"1min"`` (default) or ``"1sec"`` (raises if coverage unavailable).
+        region:
+            One of NR/WR/SR/ER/NER. Omit for all regions.
+        tz:
+            Timezone for the DataFrame index. Defaults to IST.
+
+        Returns a tz-aware DataFrame with columns ``region``, ``frequency_hz``,
+        ``deviation_hz``, ``source``.
         """
-        ensure_one_of("market", market, ("dam", "rtm", "gdam", "hp-dam", "scm"))
-        ensure_window(start, end)
-        params: dict[str, Any] = {
-            "market": market,
-            "start": _stringify(start),
-            "end": _stringify(end),
-        }
-        rows = list(self._transport.paginate("/iex/clearing-prices", params=params))
-        return rows_to_frame(rows, tz=tz)
-
-    # ------------------------------------------------------------------
-    # Typed methods (IEA-315)
-    # ------------------------------------------------------------------
-
-    def get_carbon_intensity(
-        self,
-        *,
-        discom: str | None = None,
-        state: str | None = None,
-        start: str | pd.Timestamp,
-        end: str | pd.Timestamp,
-        tz: str = DEFAULT_TZ,
-    ) -> pd.DataFrame:
-        """Hourly carbon intensity, addressable by DISCOM or state.
-
-        Exactly one of ``discom`` or ``state`` must be provided. Returns
-        a tz-aware DataFrame with columns including ``gco2_per_kwh``,
-        ``confidence``, and ``provenance`` (matches ies-ingest source_kind).
-
-        **Preview API.** This method emits a ``PreviewWarning`` on first
-        use because the underlying carbon-intensity dataset is marked
-        Preview on energymap.in/ies until the DUM 2026 launch (October
-        2026). The shape is stable; method signature may evolve.
-        """
-        _warn_preview_once("get_carbon_intensity", until="2026-10-01")
-        if (discom is None) == (state is None):
-            raise ValueError("Exactly one of discom= or state= must be provided")
-        ensure_window(start, end)
-
         params: dict[str, Any] = {
             "start": _stringify(start),
             "end": _stringify(end),
+            "granularity": granularity,
         }
-        if discom is not None:
-            params["discom"] = discom
-        else:
-            assert state is not None
-            params["state"] = validate_state(state)
-
-        rows = list(self._transport.paginate("/carbon/intensity", params=params))
-        return rows_to_frame(rows, tz=tz)
+        if region is not None:
+            params["region"] = region
+        rows = list(self._transport.paginate("/api/intelligence/frequency", params=params))
+        df = rows_to_frame(rows, tz=tz)
+        if df.empty:
+            return df
+        coerce_numeric_columns(df, ["frequency_hz", "deviation_hz"])
+        return df
 
     def get_discom_metrics(
         self,
@@ -299,14 +400,23 @@ class AtlasClient:
         metrics: list[str] | None = None,
         tz: str = DEFAULT_TZ,
     ) -> pd.DataFrame:
-        """Daily DISCOM operational metrics.
+        """DISCOM operational scorecard metrics (AT&C losses, billing/collection efficiency, etc.).
 
-        Returns a daily-frequency DataFrame with one column per requested
-        metric (or all 70+ if ``metrics`` is None). Common metrics:
-        ``collection_efficiency``, ``billing_efficiency``, ``atc_loss``,
-        ``acs_arr_gap_inr_per_kwh``.
+        Parameters
+        ----------
+        discom:
+            Canonical DISCOM slug (e.g. ``"bses-rajdhani"``). Validated
+            against ``_discoms.CANONICAL_DISCOMS`` before the network call.
+        start, end:
+            ISO-8601 date bounds.
+        metrics:
+            Optional list of metric codes to return (all if omitted).
+        tz:
+            Timezone for the DataFrame index. Defaults to IST.
         """
-        ensure_window(start, end)
+        from india_energy_atlas._discoms import validate_discom
+        validate_discom(discom)
+
         params: dict[str, Any] = {
             "discom": discom,
             "start": _stringify(start),
@@ -314,92 +424,19 @@ class AtlasClient:
         }
         if metrics:
             params["metrics"] = ",".join(metrics)
-        rows = list(self._transport.paginate("/discom/metrics", params=params))
+        rows = list(self._transport.paginate("/api/intelligence/discom-metrics", params=params))
         return rows_to_frame(rows, tz=tz)
 
-    def get_frequency(
-        self,
-        *,
-        start: str | pd.Timestamp,
-        end: str | pd.Timestamp,
-        granularity: FrequencyGranularity = "1min",
-        region: GridRegion | None = None,
-        tz: str = DEFAULT_TZ,
-    ) -> pd.DataFrame:
-        """Grid frequency observations.
-
-        Returns a tz-aware DataFrame with ``frequency_hz`` and ``region``
-        (one of NR / WR / SR / ER / NER). If ``region`` is set, results
-        are filtered to that region; otherwise all five regions are
-        interleaved.
-        """
-        ensure_one_of("granularity", granularity, ("1sec", "1min"))
-        ensure_window(start, end)
-        if region is not None:
-            ensure_one_of("region", region, ("NR", "WR", "SR", "ER", "NER"))
-
-        params: dict[str, Any] = {
-            "start": _stringify(start),
-            "end": _stringify(end),
-            "granularity": granularity,
-        }
-        if region is not None:
-            params["region"] = region
-        rows = list(self._transport.paginate("/grid/frequency", params=params))
-        return rows_to_frame(rows, tz=tz)
-
-    # ------------------------------------------------------------------
-    # Regulatory corpus (IEA-316)
-    # ------------------------------------------------------------------
-
-    def search_orders(
-        self,
-        *,
-        body: RegulatoryBody,
-        query: str,
-        issued_after: str | pd.Timestamp | None = None,
-        issued_before: str | pd.Timestamp | None = None,
-        limit: int | None = None,
-    ) -> pd.DataFrame:
-        """Search the structured CERC + 5 SERC regulatory corpus.
-
-        Returns a DataFrame with columns ``order_id``, ``body``,
-        ``issued_at``, ``title``, ``petitioner``, ``respondent``,
-        ``tags``, ``url``. Results auto-paginate.
-        """
-        ensure_one_of("body", body, ("cerc", "derc", "mserc", "jverc", "opserc", "tnerc"))
-        ensure_window(issued_after, issued_before)
-        params: dict[str, Any] = {"body": body, "query": query}
-        if issued_after is not None:
-            params["issued_after"] = _stringify(issued_after)
-        if issued_before is not None:
-            params["issued_before"] = _stringify(issued_before)
-        rows = list(self._transport.paginate("/regulatory/orders", params=params, limit=limit))
-        return rows_to_frame(rows, timestamp_column="issued_at")
+    def search_orders(self, **kwargs: Any) -> pd.DataFrame:
+        """Not yet live. Landing in IEA-328."""
+        raise NotImplementedError(
+            "/api/intelligence/regulatory-orders endpoint lands in IEA-328. "
+            "Track progress at https://linear.app/sayon/issue/IEA-328"
+        )
 
     def get_order(self, order_id: str) -> dict[str, Any]:
-        """Fetch one fully structured regulatory order.
-
-        ``order_id`` follows the canonical form
-        ``<body>/<year>/<docket>/<issued-date>``, e.g.
-        ``cerc/2024/178/2024-08-12``. Raises ``AtlasNotFoundError`` for
-        unknown ids.
-        """
-        payload = self._transport.request_json("GET", f"/regulatory/orders/{order_id}")
-        if not isinstance(payload, dict):
-            raise TypeError(
-                f"expected dict from /regulatory/orders/{order_id}, got {type(payload).__name__}"
-            )
-        return payload
-
-
-def _stringify(value: str | pd.Timestamp) -> str:
-    if isinstance(value, pd.Timestamp):
-        return str(value.isoformat())
-    return str(value)
-
-
-def _stringify_filter_value(value: object) -> str:
-    if isinstance(value, list | tuple):
-        return ",".join(str(v) for v in value)
-    return str(value)
+        """Not yet live. Landing in IEA-328."""
+        raise NotImplementedError(
+            "/api/intelligence/regulatory-orders endpoint lands in IEA-328. "
+            "Track progress at https://linear.app/sayon/issue/IEA-328"
+        )
